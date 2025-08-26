@@ -305,7 +305,6 @@ terraform/envs/staging/.terraform.lock.hcl
 # Security
 snyk
 env_example
-.env .backup
 
 # Test data
 test data/
@@ -318,3 +317,22 @@ test_data/
 
 # Poetry
 poetry.lock
+
+# Node.js (if using any frontend components)
+node_modules/
+dist/
+
+# Java (if using any Java components)
+*.class
+*.jar
+
+# Maven
+target/
+
+# Large media files
+*.mp4
+*.tiff
+*.avi
+*.flv
+*.mov
+*.wmv
