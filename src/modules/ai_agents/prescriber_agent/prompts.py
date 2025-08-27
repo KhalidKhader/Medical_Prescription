@@ -88,33 +88,3 @@ Return a validation report in JSON format:
 
 Focus on regulatory compliance and data accuracy for healthcare provider information.
 """
-
-
-def get_prescriber_enhancement_prompt(prescriber_data: Dict[str, Any]) -> str:
-    """
-    Get prompt for enhancing prescriber information
-    
-    Args:
-        prescriber_data: Current prescriber data to enhance
-        
-    Returns:
-        Enhancement prompt
-    """
-    return f"""
-You are a healthcare data specialist. Enhance and standardize the following prescriber information.
-
-Current prescriber data:
-{prescriber_data}
-
-Enhancement tasks:
-1. Standardize name formatting (proper case)
-2. Validate and format license numbers
-3. Validate NPI number format (10 digits)
-4. Validate DEA number format (letter + 6-7 digits)
-5. Normalize address format if present
-6. Standardize phone number format
-7. Improve data quality and consistency
-
-Return the enhanced prescriber information in the same JSON format with improved formatting and regulatory compliance.
-Include a certainty score reflecting the quality of the information.
-"""

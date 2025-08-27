@@ -19,7 +19,7 @@ from src.modules.prescriptions_management.schema import (
 )
 from src.core.services.gemini.gemini import gemini_service
 from src.modules.ai_agents.workflow.builder import build_prescription_workflow
-from src.modules.ai_agents.prompts.system_prompts import SYSTEM_PROMPT
+from .system_prompts import SYSTEM_PROMPT
 
 
 class PrescriptionProcessingService:

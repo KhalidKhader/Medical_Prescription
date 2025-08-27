@@ -32,6 +32,6 @@ Return ONLY the Spanish translation as a single string.
 
 Examples:
 - "Take 1 tablet by mouth twice daily" → "Tome 1 tableta por via oral dos veces al dia"
-- "Administer 2 puffs by inhalation twice daily" → "Administre 2 inhalaciones por inhalacion dos veces al dia"
+- "Give 2 puffs by inhalation twice daily" → "Give 2 inhalaciones por inhalacion dos veces al dia"
 - "Apply twice daily as needed" → "Aplique dos veces al dia segun sea necesario"
 """

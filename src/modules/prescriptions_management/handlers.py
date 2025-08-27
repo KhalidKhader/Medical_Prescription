@@ -8,9 +8,7 @@ from fastapi import HTTPException, status
 from src.core.settings.logging import logger
 from src.modules.prescriptions_management.services import PrescriptionProcessingService
 from src.modules.prescriptions_management.schema import (
-    PrescriptionProcessingRequest,
-    PrescriptionProcessingResponse,
-    PrescriptionImageUploadResponse
+    PrescriptionProcessingResponse
 )
 import asyncio
 
@@ -26,62 +24,64 @@ class PrescriptionProcessingHandler:
         self.service = PrescriptionProcessingService()
         logger.info("Prescription processing handler initialized")
     
-    async def _validate_processing_request(
-        self,
-        request: PrescriptionProcessingRequest
+    async def handle_prescription_upload(
+        self, 
+        file_data: bytes, 
+        filename: str, 
+        content_type: str
     ) -> Dict[str, Any]:
-        """Validate prescription processing request"""
+        """
+        Handle prescription image upload and processing.
+        
+        Args:
+            file_data: Raw file data
+            filename: Original filename
+            content_type: File content type
+            
+        Returns:
+            Processing result with structured data
+        """
         try:
-            validation_result = {"valid": True, "errors": []}
+            logger.info(f"Processing prescription upload: {filename}")
             
-            # Validate image ID
-            if not request.image_id or not self._validate_image_id(request.image_id):
-                validation_result["valid"] = False
-                validation_result["errors"].append("Invalid or missing image ID")
-            
-            # Validate processing options
-            if request.processing_options:
-                if not isinstance(request.processing_options, dict):
-                    validation_result["valid"] = False
-                    validation_result["errors"].append("Processing options must be a dictionary")
-            
-            # Set error message if validation failed
+            # Validate image
+            validation_result = await self.service.validate_image(file_data)
             if not validation_result["valid"]:
-                validation_result["error"] = "; ".join(validation_result["errors"])
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=validation_result["error"]
+                )
             
-            return validation_result
+            # Optimize image
+            optimized_image_data = self.service.optimize_image(file_data)
             
+            # Convert to base64
+            import base64
+            image_base64 = base64.b64encode(optimized_image_data).decode('utf-8')
+            
+            # Process prescription with AI agents
+            result = await self.service.process_prescription_image(
+                image_base64=image_base64,
+                request_metadata={
+                    "filename": filename,
+                    "file_size": len(file_data),
+                    "content_type": content_type,
+                    "validation_result": validation_result
+                }
+            )
+            
+            logger.info(f"Prescription processing completed: {result['processing_id']}")
+            return result
+            
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error(f"Error validating processing request: {e}")
-            return {
-                "valid": False,
-                "error": f"Validation error: {str(e)}"
-            }
+            logger.error(f"Error processing prescription upload: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to process prescription: {str(e)}"
+            )
     
-    def _validate_processing_id(self, processing_id: str) -> bool:
-        """Validate processing ID format"""
-        try:
-            import uuid
-            uuid.UUID(processing_id)
-            return True
-        except (ValueError, TypeError):
-            return False
+
     
-    def _validate_image_id(self, image_id: str) -> bool:
-        """Validate image ID format"""
-        try:
-            import uuid
-            uuid.UUID(image_id)
-            return True
-        except (ValueError, TypeError):
-            return False
-    
-    
-    def _get_quality_recommendation(self, confidence: float) -> str:
-        """Get quality-based recommendation"""
-        if confidence > 0.8:
-            return "Data quality is high - ready for use"
-        elif confidence > 0.6:
-            return "Data quality is medium - review recommended"
-        else:
-            return "Data quality is low - manual verification required"
+

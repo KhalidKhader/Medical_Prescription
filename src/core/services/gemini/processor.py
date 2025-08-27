@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langfuse import observe, Langfuse
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+from src.core.settings.threading import cache_result, CircuitBreaker, RetryStrategy
 from .models import GeminiModels
 
 
@@ -22,6 +23,7 @@ class GeminiProcessor:
             public_key=settings.langfuse_public_key,
             host=settings.langfuse_host
         )
+        self.circuit_breaker = CircuitBreaker(failure_threshold=5, recovery_timeout=60)
     
     @observe(name="gemini_vision_processing", as_type="generation", capture_input=True, capture_output=True)
     async def process_prescription_image(

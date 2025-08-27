@@ -336,3 +336,4 @@ target/
 *.flv
 *.mov
 *.wmv
+.env_example

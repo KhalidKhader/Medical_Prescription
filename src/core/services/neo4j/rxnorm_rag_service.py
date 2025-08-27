@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional
 from neo4j import AsyncGraphDatabase
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+from src.core.settings.threading import cache_result, global_cache, CircuitBreaker, RetryStrategy
 from .queries import (
     HEALTH_CHECK_QUERY,
     SAMPLE_DRUG_QUERY,
@@ -26,6 +27,7 @@ class RxNormService:
     def __init__(self):
         """Initialize RxNorm service with Neo4j connection"""
         self.driver = None
+        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
         self._initialize_driver()
     
     def _initialize_driver(self):
@@ -116,18 +118,14 @@ class RxNormService:
                 "error": str(e)
             }
     
+    @cache_result(ttl=3600, key_func=lambda self, drug_name, limit=10: f"drug_search_{drug_name.lower()}_{limit}")
     async def search_drug(self, drug_name: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search for drugs by name with fuzzy matching and OCR correction"""
+        """Search for drugs by name with fuzzy matching and OCR correction (cached)"""
         try:
             logger.info(f"🔍 Searching for drug: '{drug_name}'")
             
-            # First try exact search
-            drugs = await self._exact_drug_search(drug_name, limit)
-            
-            # If no results, try fuzzy search with OCR corrections
-            if not drugs:
-                logger.info(f"No exact match found, trying OCR corrections and fuzzy search for '{drug_name}'")
-                drugs = await self._fuzzy_drug_search(drug_name, limit)
+            # Use circuit breaker for database operations
+            drugs = await self.circuit_breaker.call(self._search_drug_internal, drug_name, limit)
             
             if drugs:
                 logger.info(f"✅ Found {len(drugs)} drug matches for '{drug_name}'")
@@ -139,6 +137,18 @@ class RxNormService:
         except Exception as e:
             logger.error(f"Drug search failed: {e}")
             return []
+    
+    async def _search_drug_internal(self, drug_name: str, limit: int) -> List[Dict[str, Any]]:
+        """Internal drug search logic"""
+        # First try exact search
+        drugs = await self._exact_drug_search(drug_name, limit)
+        
+        # If no results, try fuzzy search with OCR corrections
+        if not drugs:
+            logger.info(f"No exact match found, trying OCR corrections and fuzzy search for '{drug_name}'")
+            drugs = await self._fuzzy_drug_search(drug_name, limit)
+        
+        return drugs
 
     async def _exact_drug_search(self, drug_name: str, limit: int) -> List[Dict[str, Any]]:
         """Exact drug name search"""

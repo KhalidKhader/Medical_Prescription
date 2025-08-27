@@ -10,6 +10,7 @@ from src.core.settings.logging import logger
 from src.core.services.gemini.gemini import gemini_service
 from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
 from src.core.settings.observability import AuditLogger
+from src.core.settings.threading import global_performance_monitor, global_cache
 
 
 class SystemHealthChecker:
@@ -28,22 +29,6 @@ class SystemHealthChecker:
             Comprehensive health report
         """
         return await self.check_all_services()
-      
-    async def _is_gemini_ready(self) -> bool:
-        """Check if Gemini service is ready"""
-        try:
-            health = await self.check_gemini_health()
-            return health.get("status") == "healthy"
-        except Exception:
-            return False
-    
-    async def _is_neo4j_ready(self) -> bool:
-        """Check if Neo4j service is ready"""
-        try:
-            health = await self.check_neo4j_health()
-            return health.get("status") == "healthy"
-        except Exception:
-            return False
     
     async def check_all_services(self) -> Dict[str, Any]:
         """
@@ -69,6 +54,10 @@ class SystemHealthChecker:
             gemini_health, neo4j_health, langfuse_health, system_health
         ])
         
+        # Get performance metrics
+        performance_stats = global_performance_monitor.get_stats()
+        cache_stats = global_cache.get_stats()
+        
         health_report = {
             "timestamp": datetime.utcnow().isoformat(),
             "overall_status": overall_status,
@@ -77,6 +66,16 @@ class SystemHealthChecker:
                 "neo4j_rxnorm": neo4j_health,
                 "langfuse": langfuse_health,
                 "system": system_health
+            },
+            "performance": {
+                "metrics": performance_stats,
+                "cache": cache_stats,
+                "optimizations": {
+                    "parallel_processing": "enabled",
+                    "circuit_breakers": "enabled",
+                    "caching": "enabled",
+                    "performance_tracking": "enabled"
+                }
             }
         }
         
@@ -242,4 +241,3 @@ class SystemHealthChecker:
             return "healthy"
         else:
             return "unknown"
-

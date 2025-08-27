@@ -65,21 +65,3 @@ Return your answer **only** as valid JSON with the following structure:
   ]
 }
 """
-
-
-def get_extraction_prompt(retry_feedback: str = None) -> str:
-    """
-    Get the extraction prompt with optional retry feedback
-    
-    Args:
-        retry_feedback: Feedback from validation failures
-        
-    Returns:
-        Complete extraction prompt
-    """
-    prompt = USER_PROMPT
-    
-    if retry_feedback:
-        prompt += f"\n\n**CRITICAL CORRECTION REQUIRED:** Your previous attempt failed validation with the following error: '{retry_feedback}'. You MUST fix this specific error in your response."
-    
-    return prompt

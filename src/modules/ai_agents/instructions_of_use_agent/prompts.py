@@ -108,7 +108,7 @@ Return ONLY a JSON object:
 
 Examples:
 - "1 po bid x 7d" → "Take 1 tablet by mouth twice daily for 7 days"
-- "2 puffs bid" → "Administer 2 puffs by inhalation twice daily"
+- "2 puffs bid" → "Give  2 puffs by inhalation twice daily"
 - "T PO qd am" → "Take 1 tablet by mouth once daily in the morning"
 """
 

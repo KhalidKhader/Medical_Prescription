@@ -19,15 +19,8 @@ from .tools import (
     validate_instruction_safety,
     repair_instruction_json
 )
+from langfuse import observe
 
-# LangFuse observability
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name: str):
-        def decorator(func):
-            return func
-        return decorator
 
 logger = logging.getLogger(__name__)
 

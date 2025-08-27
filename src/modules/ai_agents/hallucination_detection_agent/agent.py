@@ -8,15 +8,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+from langfuse import observe
 
-# Optional LangFuse import
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name=None, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
+
 from .prompts import (
     get_hallucination_check_prompt,
     get_consistency_check_prompt,

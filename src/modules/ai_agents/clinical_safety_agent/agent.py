@@ -24,14 +24,8 @@ from .tools import (
     extract_safety_recommendations
 )
 
-# Optional LangFuse import
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name=None):
-        def decorator(func):
-            return func
-        return decorator
+from langfuse import observe
+
 
 logger = logging.getLogger(__name__)
 
@@ -153,8 +147,6 @@ class ClinicalSafetyAgent:
             logger.error(f"❌ Medication safety assessment failed for {drug_name}: {e}")
             return get_default_safety_assessment(drug_name, str(e))
 
-
-
     def _generate_safety_summary(self, status: str, score: float, flags: List[str]) -> str:
         """Generate human-readable safety summary"""
         flag_count = len(flags)
@@ -165,46 +157,3 @@ class ClinicalSafetyAgent:
             return f"Prescription requires caution (Score: {score:.1f}/100). {flag_count} safety concerns identified - pharmacist review recommended."
         else:
             return f"Prescription has safety concerns (Score: {score:.1f}/100). {flag_count} safety flags raised - immediate pharmacist review required."
-
-    async def check_drug_interactions(self, medications: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Check for potential drug-drug interactions using specialized prompts"""
-        try:
-            if len(medications) < 2:
-                return {
-                    "interactions_found": False,
-                    "interaction_details": [],
-                    "interaction_severity": "NONE"
-                }
-            
-            # Extract drug names
-            drug_names = [med.get("drug_name", "") for med in medications if med.get("drug_name")]
-            
-            if len(drug_names) < 2:
-                return {
-                    "interactions_found": False,
-                    "interaction_details": [],
-                    "interaction_severity": "NONE"
-                }
-            
-            # Use specialized interaction check prompt
-            interaction_prompt = get_drug_interaction_check_prompt(drug_names)
-            response = await self.llm.ainvoke(interaction_prompt)
-            
-            # Validate and repair response
-            try:
-                interaction_data = validate_safety_assessment_response(response.content)
-                return interaction_data
-            except:
-                return {
-                    "interactions_found": False,
-                    "interaction_details": ["Unable to assess interactions"],
-                    "interaction_severity": "UNKNOWN"
-                }
-                
-        except Exception as e:
-            logger.error(f"Drug interaction check failed: {e}")
-            return {
-                "interactions_found": False,
-                "interaction_details": [f"Interaction check failed: {e}"],
-                "interaction_severity": "UNKNOWN"
-            }

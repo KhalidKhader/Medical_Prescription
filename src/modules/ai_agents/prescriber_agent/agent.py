@@ -9,15 +9,7 @@ from langchain_core.messages import HumanMessage
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
-
-# Optional LangFuse import
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name=None, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
+from langfuse import observe
 from .prompts import get_prescriber_extraction_prompt
 from .tools import repair_prescriber_json, extract_prescriber_quality_metrics
 

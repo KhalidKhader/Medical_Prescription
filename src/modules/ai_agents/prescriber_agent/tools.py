@@ -57,28 +57,6 @@ def validate_dea_number(dea: str) -> Tuple[bool, str]:
     return False, cleaned_dea
 
 
-def validate_state_license(license_num: str) -> Tuple[bool, str]:
-    """
-    Validate state license number format
-    
-    Args:
-        license_num: State license number to validate
-        
-    Returns:
-        Tuple of (is_valid, cleaned_license)
-    """
-    if not license_num or not license_num.strip():
-        return False, ""
-    
-    cleaned_license = license_num.strip()
-    
-    # Basic validation - should have some alphanumeric content
-    if len(cleaned_license) >= 3 and re.search(r'[A-Za-z0-9]', cleaned_license):
-        return True, cleaned_license
-    
-    return False, cleaned_license
-
-
 def validate_contact_number(phone: str) -> Tuple[bool, str]:
     """
     Validate and format contact number
