@@ -302,6 +302,3 @@ For support and questions:
 ---
 
 **Note**: This system processes medical data and should be used in compliance with relevant healthcare regulations and privacy laws.
-
-#   M e d i c a l _ P r e s c r i p t i o n  
- 
