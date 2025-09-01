@@ -8,15 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
-
-# Optional LangFuse import
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name=None, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
+from langfuse import observe
 
 from .prompts import get_spanish_translation_prompt
 

@@ -4,12 +4,8 @@ Handles prescription image upload and processing with AI agents.
 """
 
 from fastapi import APIRouter, UploadFile, File, Depends
-from typing import Dict, Any
-
 from src.modules.prescriptions_management.handlers import PrescriptionProcessingHandler
-from src.modules.prescriptions_management.schema import (
-    PrescriptionProcessingResponse
-)
+from src.modules.prescriptions_management.schema import PrescriptionProcessingResponse
 
 # Create router instance
 router = APIRouter(prefix="/prescriptions", tags=["prescriptions"])

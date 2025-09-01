@@ -71,7 +71,7 @@ class InstructionsOfUseAgent:
             
             # Step 1: Get RxNorm clinical context
             logger.info("🔍 Step 1: Retrieving RxNorm clinical context...")
-            rxnorm_context = await get_rxnorm_instruction_context(drug_name, strength)
+            rxnorm_context = get_rxnorm_instruction_context(drug_name, None)  # No rxnorm_data available here
             
             # Step 2: Parse instruction components
             logger.info("📋 Step 2: Parsing instruction components...")

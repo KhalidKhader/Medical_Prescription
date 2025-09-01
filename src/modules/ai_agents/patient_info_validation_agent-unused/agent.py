@@ -8,15 +8,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+from langfuse import observe
 
-# Optional LangFuse import
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name=None, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
 from .prompts import get_patient_validation_prompt
 from src.modules.ai_agents.patient_info_agent.tools import (
     validate_patient_name,

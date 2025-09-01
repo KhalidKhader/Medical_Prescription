@@ -1,25 +1,18 @@
 """
-Services for prescription processing operations.
-Contains business logic for prescription image processing and data extraction.
+Prescription Processing Service
+Main service for processing prescription images through AI agents
 """
 
-from typing import Dict, Any, Optional, List
 import uuid
-import asyncio
-import base64
 import json
+import io
+from typing import Dict, Any, Optional
 from datetime import datetime
 from PIL import Image
-import io
 
 from src.core.settings.logging import logger
 from src.core.settings.config import settings
-from src.modules.prescriptions_management.schema import (
-    Prescription
-)
-from src.core.services.gemini.gemini import gemini_service
-from src.modules.ai_agents.workflow.builder import build_prescription_workflow
-from .system_prompts import SYSTEM_PROMPT
+from src.modules.ai_agents.workflow.streamlined_orchestrator import build_prescription_workflow
 
 
 class PrescriptionProcessingService:
@@ -57,9 +50,7 @@ class PrescriptionProcessingService:
             # Create initial workflow state
             initial_state = {
                 "image_base64": image_base64,
-                "retry_count": 0,
-                "feedback": None,
-                "supervisor_rules": SYSTEM_PROMPT
+                "retry_count": 0
             }
             
             # Execute the workflow
@@ -68,7 +59,6 @@ class PrescriptionProcessingService:
             
             # Extract results
             final_json_output = final_state.get("final_json_output")
-            final_supervisor_report = final_state.get("final_supervisor_report")
             quality_warnings = final_state.get("quality_warnings", [])
             
             # Parse the final JSON output
@@ -83,12 +73,11 @@ class PrescriptionProcessingService:
             processing_time = (end_time - start_time).total_seconds()
             
             # Prepare response
-            result = {
+            return {
                 "processing_id": processing_id,
                 "status": "completed",
                 "processing_time_seconds": processing_time,
                 "prescription_data": prescription_data,
-                "supervisor_report": final_supervisor_report,
                 "quality_warnings": quality_warnings,
                 "metadata": {
                     "start_time": start_time.isoformat(),
@@ -96,9 +85,6 @@ class PrescriptionProcessingService:
                     "request_metadata": request_metadata or {}
                 }
             }
-            
-            logger.info(f"Prescription processing completed: {processing_id}")
-            return result
             
         except Exception as e:
             logger.error(f"Prescription processing failed: {e}")
@@ -112,7 +98,6 @@ class PrescriptionProcessingService:
                 "processing_time_seconds": processing_time,
                 "error": str(e),
                 "prescription_data": None,
-                "supervisor_report": None,
                 "quality_warnings": [f"Processing failed: {str(e)}"],
                 "metadata": {
                     "start_time": start_time.isoformat(),

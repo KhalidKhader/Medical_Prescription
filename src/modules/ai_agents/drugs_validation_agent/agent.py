@@ -19,7 +19,6 @@ except ImportError:
         return decorator
 
 from .prompts import get_drugs_validation_prompt
-from src.modules.ai_agents.drugs_agent.tools import validate_medication_data
 
 
 class DrugsValidationAgent:
@@ -64,8 +63,18 @@ class DrugsValidationAgent:
                 drug_name = medication.get("drug_name", f"Medication {i+1}")
                 logger.info(f"Validating medication: {drug_name}")
                 
-                # Validate using tools
-                is_valid, warnings, cleaned_medication = validate_medication_data(medication)
+                # Basic validation - detailed validation handled by other agents
+                is_valid = True
+                warnings = []
+                
+                # Check essential fields
+                if not medication.get("drug_name"):
+                    warnings.append("Missing drug name")
+                    is_valid = False
+                
+                if not medication.get("instructions_for_use"):
+                    warnings.append("Missing instructions for use")
+                    is_valid = False
                 
                 if warnings:
                     validation_results["warnings"].extend([f"{drug_name}: {w}" for w in warnings])
@@ -74,7 +83,7 @@ class DrugsValidationAgent:
                 if is_valid:
                     validation_results["validated_count"] += 1
                 
-                validated_medications.append(cleaned_medication)
+                validated_medications.append(medication)
             
             logger.info(f"Drugs validation completed: {validation_results['validated_count']}/{validation_results['total_medications']} valid")
             

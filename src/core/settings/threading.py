@@ -112,34 +112,6 @@ class CircuitBreaker:
         if self.failure_count >= self.failure_threshold:
             self.state = "OPEN"
 
-class RetryStrategy:
-    """Advanced retry strategy with exponential backoff and jitter"""
-    
-    @staticmethod
-    async def retry_with_backoff(
-        func: Callable,
-        max_retries: int = 3,
-        base_delay: float = 1.0,
-        max_delay: float = 60.0,
-        jitter: bool = True,
-        backoff_multiplier: float = 2.0
-    ):
-        """Execute function with exponential backoff retry"""
-        for attempt in range(max_retries + 1):
-            try:
-                if asyncio.iscoroutinefunction(func):
-                    return await func()
-                return func()
-            except Exception as e:
-                if attempt == max_retries:
-                    raise e
-                
-                delay = min(base_delay * (backoff_multiplier ** attempt), max_delay)
-                if jitter:
-                    delay *= random.uniform(0.5, 1.5)
-                
-                await asyncio.sleep(delay)
-
 class PerformanceMonitor:
     """Monitor performance metrics for agents and API calls"""
     
@@ -174,37 +146,6 @@ class PerformanceMonitor:
                     "count": len(timings)
                 }
         return stats
-
-def cache_result(ttl: int = 3600, key_func: Optional[Callable] = None):
-    """Decorator for caching function results"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            cache = getattr(wrapper, '_cache', None)
-            if cache is None:
-                cache = InMemoryCache()
-                wrapper._cache = cache
-            
-            if key_func:
-                cache_key = key_func(*args, **kwargs)
-            else:
-                cache_key = cache._generate_key(*args, **kwargs)
-            
-            # Try to get from cache
-            cached_result = await cache.get(cache_key)
-            if cached_result is not None:
-                return cached_result
-            
-            # Execute function and cache result
-            if asyncio.iscoroutinefunction(func):
-                result = await func(*args, **kwargs)
-            else:
-                result = func(*args, **kwargs)
-            
-            await cache.set(cache_key, result, ttl)
-            return result
-        return wrapper
-    return decorator
 
 # Global instances for system-wide use
 global_cache = InMemoryCache(max_size=2000)
@@ -251,7 +192,7 @@ def performance_tracked(operation_name: str):
                 return result
             except Exception as e:
                 duration = time.time() - start_time
-                global_performance_monitor.record_timing(f"{operation_name}_failed", duration)
+                global_performance_monitor.record_timing(operation_name, duration)
                 global_performance_monitor.increment_counter(f"{operation_name}_failures")
                 raise e
         return wrapper

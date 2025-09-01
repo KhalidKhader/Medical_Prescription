@@ -43,11 +43,12 @@ Medication Information:
 INSTRUCTION GENERATION RULES:
 1. Write clear instructions for the patient based on the doctor's abbreviated instructions
 2. Include: verb, quantity, route of administration, and frequency/interval
-3. Use "Administer" for inhalation medications (not "Inhale by inhalation")
-4. For Spanish: NO accents on any letters
-5. For durations <21 days: include duration in instructions
-6. Use words for frequency, not numbers (except for hour intervals like "every 4 hours")
-7. Do NOT add indication recommendations into the instruction - leave for pharmacist review
+3. Use "Give" for English and "Administer" for Spanish inhalation medications (not "Inhale by inhalation")
+4. Generate BOTH English (sig_english) AND Spanish (sig_spanish) instructions
+5. For Spanish: NO accents on any letters - use standard characters only
+6. For durations <21 days: include duration in instructions
+7. Use words for frequency, not numbers (except for hour intervals like "every 4 hours")
+8. Do NOT add indication recommendations into the instruction - leave for pharmacist review
 8. Make changes to improve instructions and note observations for pharmacist
 
 Should always be:
@@ -64,7 +65,7 @@ Component Guidelines:
    - Eye drops: "Instill"
    - Topical: "Apply"
    - Injections: "Inject"
-   - Inhalers: "Administer" (NOT "Inhale")
+   - Inhalers: Use "Give" for English and "Administer" for Spanish "Administer" (NOT "Inhale")
 
 2. QUANTITY: Exact amount per dose
    - "1 tablet", "2 capsules", "2 puffs", "thin layer"

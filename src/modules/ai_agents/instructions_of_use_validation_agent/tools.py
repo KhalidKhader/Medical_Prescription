@@ -171,29 +171,8 @@ def assess_safety_risks(drug_name: str, structured_instructions: Dict[str, Any],
             if "as needed" not in frequency.lower():
                 risk_assessment["safety_concerns"].append("Fixed dosing schedule for controlled substance - consider PRN")
         
-        # Drug-specific risk assessment
-        drug_lower = drug_name.lower()
-        
-        # NSAID risks
-        if any(nsaid in drug_lower for nsaid in ['ibuprofen', 'naproxen', 'diclofenac', 'aspirin']):
-            risk_assessment["risk_factors"].append("NSAID - GI and cardiovascular risks")
-            risk_assessment["monitoring_required"].append("Monitor for GI bleeding")
-            risk_assessment["contraindications"].append("Avoid with active GI bleeding")
-        
-        # Acetaminophen overdose risk
-        if 'acetaminophen' in drug_lower:
-            quantity = structured_instructions.get("quantity", "")
-            frequency = structured_instructions.get("frequency", "")
-            if "4" in frequency or "6" in frequency:  # More than 3 times daily
-                risk_assessment["safety_concerns"].append("High frequency acetaminophen - monitor total daily dose")
-                risk_assessment["overall_risk"] = "MODERATE"
-        
-        # Antibiotic resistance
-        if any(abx in drug_lower for abx in ['amoxicillin', 'azithromycin', 'ciprofloxacin', 'doxycycline']):
-            duration = structured_instructions.get("duration")
-            if not duration:
-                risk_assessment["safety_concerns"].append("Antibiotic without specified duration")
-                risk_assessment["overall_risk"] = "MODERATE"
+        # Generic risk assessment based on RxNorm data only
+        # No drug-specific static logic - rely on knowledge graph data
         
         # Route-specific risks
         route = structured_instructions.get("route", "")

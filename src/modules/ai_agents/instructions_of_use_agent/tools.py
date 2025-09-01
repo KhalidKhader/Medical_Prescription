@@ -20,71 +20,64 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-@observe(name="rxnorm_instruction_context", as_type="generation", capture_input=True, capture_output=True)
-async def get_rxnorm_instruction_context(drug_name: str, strength: str = None) -> Dict[str, Any]:
+def get_rxnorm_instruction_context(drug_name: str, rxnorm_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Get RxNorm context for instruction generation and safety validation
+    Get RxNorm context for instruction generation using existing RxNorm data
     
     Args:
         drug_name: Name of the medication
-        strength: Medication strength (optional)
+        rxnorm_data: Existing RxNorm data from drug lookup (can be None)
         
     Returns:
         RxNorm context with clinical information
     """
     try:
-        from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
-        
-        logger.info(f"🔍 RXNORM INSTRUCTION CONTEXT: Drug='{drug_name}', Strength='{strength}'")
-        
-        # Search for drug information
-        search_results = await rxnorm_service.search_drug(drug_name, limit=3)
-        
-        if not search_results:
-            logger.warning(f"⚠️ No RxNorm context found for {drug_name}")
-            return {
+        # If no RxNorm data available, create basic context
+        if not rxnorm_data or not rxnorm_data.get('rxcui'):
+            logger.info(f"ℹ️ Creating basic RxNorm context for {drug_name}")
+            context = {
                 "found": False,
                 "drug_name": drug_name,
-                "message": "No RxNorm data available"
+                "rxcui": None,
+                "ndc": None,
+                "drug_schedule": None,
+                "brand_name": None,
+                "brand_ndc": None,
+                # Infer basic information from drug name
+                "dosage_form": infer_dosage_form(drug_name, ""),
+                "route": infer_administration_route(drug_name, ""),
+                "typical_frequency": infer_typical_frequency(drug_name, None),
+                "safety_notes": generate_safety_notes(None, drug_name),
+                "message": "Basic context created from drug name"
             }
+            return context
         
-        # Get the best match
-        best_match = search_results[0]
-        concept_id = best_match.get('concept_id')
-        
-        # Get detailed information
-        details = {}
-        if concept_id:
-            details = await rxnorm_service.get_drug_details(concept_id)
-        
-        # Build comprehensive context
+        # Build context from existing RxNorm data
         context = {
             "found": True,
-            "drug_name": best_match.get('drug_name', drug_name),
-            "concept_id": concept_id,
-            "concept_name": best_match.get('concept_name'),
-            "rxcui": concept_id,
-            "ndc": details.get('NDC'),
-            "drug_schedule": details.get('DEA_SCHEDULE'),
-            "brand_name": details.get('BRAND_NAME'),
-            "brand_ndc": details.get('BRAND_NDC'),
-            # Infer common information for instruction context
-            "dosage_form": infer_dosage_form(drug_name, best_match.get('drug_name', '')),
-            "route": infer_administration_route(drug_name, best_match.get('drug_name', '')),
-            "typical_frequency": infer_typical_frequency(drug_name, details.get('DEA_SCHEDULE')),
-            "safety_notes": generate_safety_notes(details.get('DEA_SCHEDULE'), drug_name)
+            "drug_name": rxnorm_data.get('verified_name', drug_name),
+            "rxcui": rxnorm_data.get('rxcui'),
+            "ndc": rxnorm_data.get('ndc'),
+            "drug_schedule": rxnorm_data.get('drug_schedule'),
+            "brand_name": rxnorm_data.get('brand_drug'),
+            "brand_ndc": rxnorm_data.get('brand_ndc'),
+            # Infer information from drug name and existing data
+            "dosage_form": infer_dosage_form(drug_name, rxnorm_data.get('verified_name', '')),
+            "route": infer_administration_route(drug_name, rxnorm_data.get('verified_name', '')),
+            "typical_frequency": infer_typical_frequency(drug_name, rxnorm_data.get('drug_schedule')),
+            "safety_notes": generate_safety_notes(rxnorm_data.get('drug_schedule'), drug_name)
         }
         
-        logger.info(f"✅ RxNorm context found: {context['drug_name']} (RxCUI: {concept_id})")
+        logger.info(f"✅ Using existing RxNorm context: {context['drug_name']} (RxCUI: {context['rxcui']})")
         return context
         
     except Exception as e:
-        logger.error(f"❌ RxNorm context lookup failed: {e}")
+        logger.error(f"❌ RxNorm context processing failed: {e}")
         return {
             "found": False,
             "drug_name": drug_name,
             "error": str(e),
-            "message": "RxNorm lookup error"
+            "message": "RxNorm context error"
         }
 
 
@@ -127,39 +120,26 @@ def infer_administration_route(original_name: str, rxnorm_name: str) -> str:
 
 
 def infer_typical_frequency(drug_name: str, schedule: str) -> List[str]:
-    """Infer typical dosing frequencies for a drug"""
+    """Infer typical dosing frequencies based on schedule only - no drug-specific logic"""
     frequencies = []
     
-    # Schedule-based frequencies
+    # Schedule-based frequencies only
     if schedule in ['II', 'III', 'IV']:
         frequencies.extend(['as needed for pain', 'every 4-6 hours as needed'])
-    
-    # Drug-specific patterns
-    drug_lower = drug_name.lower()
-    if 'antibiotic' in drug_lower or any(abx in drug_lower for abx in ['amoxicillin', 'azithromycin', 'ciprofloxacin']):
-        frequencies.extend(['twice daily', 'three times daily'])
-    elif 'pain' in drug_lower or any(pain in drug_lower for pain in ['ibuprofen', 'acetaminophen', 'aspirin']):
-        frequencies.extend(['every 6 hours as needed', 'every 4-6 hours as needed'])
     else:
-        frequencies.extend(['once daily', 'twice daily'])
+        frequencies.extend(['once daily', 'twice daily', 'three times daily'])
     
     return frequencies
 
 
 def generate_safety_notes(schedule: str, drug_name: str) -> List[str]:
-    """Generate safety notes based on drug schedule and name"""
+    """Generate safety notes based on drug schedule only - no drug-specific logic"""
     notes = []
     
     if schedule in ['II', 'III', 'IV']:
         notes.append(f"Controlled substance (Schedule {schedule}) - monitor for dependency")
         notes.append("Do not exceed prescribed dose")
         notes.append("Do not combine with alcohol")
-    
-    drug_lower = drug_name.lower()
-    if any(nsaid in drug_lower for nsaid in ['ibuprofen', 'naproxen', 'diclofenac']):
-        notes.append("Take with food to reduce stomach irritation")
-    elif 'acetaminophen' in drug_lower:
-        notes.append("Do not exceed 3000mg in 24 hours")
     
     return notes
 

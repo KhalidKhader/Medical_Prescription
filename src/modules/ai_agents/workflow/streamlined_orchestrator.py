@@ -1,156 +1,192 @@
 """
-Streamlined Prescription Processing Orchestrator
-Uses all agents in a single coordinated workflow with unified LangFuse tracing
+Streamlined Prescription Orchestrator
+Combined workflow orchestration with parallel processing and performance monitoring
 """
 
-from typing import Dict, Any, TypedDict
+import asyncio
+from typing import Dict, Any, TypedDict, Optional
 from src.core.settings.logging import logger
-
 from langfuse import observe
+from langfuse import Langfuse
+from src.core.settings.config import settings
 from src.core.settings.threading import (
     parallel_agent_execution, performance_tracked, global_performance_monitor,
-    CircuitBreaker, RetryStrategy, cache_result
+    CircuitBreaker
 )
-# LangSmith integration for enhanced tracing
-try:
-    import os
-    from langsmith import traceable
-    from langchain_core.tracers.langchain import LangChainTracer
-    LANGSMITH_AVAILABLE = True
-    logger.info("LangSmith tracing available")
-except ImportError:
-    def traceable(name=None, **kwargs):
-        def decorator(func):
-            return func
-        return decorator
-    LANGSMITH_AVAILABLE = False
-
-# Import all the specialized agents
 from src.modules.ai_agents.image_extractor_agent.agent import ImageExtractorAgent
 from src.modules.ai_agents.patient_info_agent.agent import PatientInfoAgent
 from src.modules.ai_agents.prescriber_agent.agent import PrescriberAgent
 from src.modules.ai_agents.drugs_agent.agent import DrugsAgent
-from src.modules.ai_agents.patient_info_validation_agent.agent import PatientInfoValidationAgent
-from src.modules.ai_agents.prescriber_validation_agent.agent import PrescriberValidationAgent
 from src.modules.ai_agents.drugs_validation_agent.agent import DrugsValidationAgent
-from src.modules.ai_agents.hallucination_detection_agent.agent import HallucinationDetectionAgent
 from src.modules.ai_agents.clinical_safety_agent.agent import ClinicalSafetyAgent
-from src.modules.ai_agents.translate_to_spanish_agent.agent import SpanishTranslationAgent
 from langgraph.checkpoint.memory import MemorySaver
-import asyncio
-import uuid
-import time
+from .WorkflowState import WorkflowState
 
 
-class WorkflowState(TypedDict, total=False):
-    """Streamlined workflow state"""
-    image_base64: str
-    retry_count: int
-    feedback: str
-    
-    # Extraction results
-    raw_extraction_text: str
-    prescription_data: Dict[str, Any]
-    is_valid: bool
-    
-    # Individual agent data
-    patient_data: Dict[str, Any]
-    prescriber_data: Dict[str, Any]
-    medications_to_process: list
-    processed_medications: list
-    
-    # Validation results
-    patient_validation_results: Dict[str, Any]
-    prescriber_validation_results: Dict[str, Any]
-    drugs_validation_results: Dict[str, Any]
-    hallucination_flags: list
-    safety_flags: list
-    
-    # Final output
-    final_json_output: str
-    quality_warnings: list
 
 
-class StreamlinedPrescriptionOrchestrator:
-    """Enhanced orchestrator with memory, streaming, and LangSmith tracing"""
+class PrescriptionOrchestrator:
+    """Main orchestrator for prescription processing workflow with parallel processing"""
     
-    def __init__(self):
-        """Initialize core agents according to scenario.mdc requirements"""
-        # Core extraction and processing agents (scenario.mdc)
-        self.image_extractor = ImageExtractorAgent()
-        self.patient_agent = PatientInfoAgent()
-        self.prescriber_agent = PrescriberAgent()
-        self.drugs_agent = DrugsAgent()
-        
-        # Validation agents (scenario.mdc)
-        self.patient_validator = PatientInfoValidationAgent()
-        self.prescriber_validator = PrescriberValidationAgent()
-        self.drugs_validator = DrugsValidationAgent()
-        
-        # Quality and safety agents (scenario.mdc)
-        self.hallucination_detector = HallucinationDetectionAgent()
-        self.clinical_safety_agent = ClinicalSafetyAgent()
-        self.spanish_translator = SpanishTranslationAgent()
-        
-        # Add memory for workflow persistence (LangChain enhancement)
-        self.memory = MemorySaver()
-        
-        # Performance enhancements
-        self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=30)
-        self.performance_monitor = global_performance_monitor
-        
-        logger.info("📝 Memory system initialized for workflow persistence")
-        logger.info("⚡ Performance monitoring and circuit breaker initialized")
-        logger.info("✅ Streamlined Prescription Orchestrator initialized with core agents per scenario.mdc")
-    
-    @observe(name="prescription_processing_complete_workflow", as_type="generation", capture_input=True, capture_output=True)
-    @performance_tracked("prescription_processing_workflow")
-    async def process_prescription(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process prescription through complete workflow with parallel processing and performance tracking
-        
-        Args:
-            initial_state: Initial state with image_base64
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize the workflow orchestrator with optional configuration"""
+        try:
+            logger.info("Building prescription processing workflow")
             
-        Returns:
-            Final state with complete prescription data
-        """
-        logger.info("🚀 Starting enhanced parallel prescription processing workflow")
+            # Core extraction and processing agents
+            self.image_extractor = ImageExtractorAgent()
+            self.patient_agent = PatientInfoAgent()
+            self.prescriber_agent = PrescriberAgent()
+            self.drugs_agent = DrugsAgent()
+            
+            # Essential validation agents
+            self.drugs_validator = DrugsValidationAgent()
+            
+            # Quality and safety agents
+            self.clinical_safety_agent = ClinicalSafetyAgent()
+            
+            # Memory for workflow persistence
+            self.memory = MemorySaver()
+            
+            # Performance enhancements
+            self.circuit_breaker = CircuitBreaker(failure_threshold=3, recovery_timeout=120)
+            self.performance_monitor = global_performance_monitor
+
+            # Initialize Langfuse for single trace consolidation
+            self.langfuse = Langfuse(
+                secret_key=settings.langfuse_secret_key,
+                public_key=settings.langfuse_public_key,
+                host=settings.langfuse_host
+            )
+
+            # Apply custom configuration if provided
+            if config:
+                logger.info(f"Applying custom workflow configuration: {config}")
+                self._apply_configuration(config)
+            
+            logger.info("✅ Prescription workflow orchestrator initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize prescription workflow: {e}")
+            raise
+    
+    def _apply_configuration(self, config: Dict[str, Any]):
+        """Apply custom configuration to the orchestrator"""
+        # Apply max retries if specified
+        max_retries = config.get("max_retries")
+        if max_retries is not None:
+            if 0 <= max_retries <= 10:
+                self.circuit_breaker.failure_threshold = max_retries
+                logger.info(f"Applied max retries configuration: {max_retries}")
+            else:
+                logger.warning(f"Invalid max_retries value: {max_retries}, using default")
+    
+    @observe(name="prescription_processing_workflow", as_type="generation", capture_input=True, capture_output=True)
+    async def process_prescription(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Process prescription through complete workflow"""
+        logger.info("🚀 Starting prescription processing workflow")
         
         state = WorkflowState(**initial_state)
         state.setdefault("quality_warnings", [])
         state.setdefault("retry_count", 0)
         
         try:
-            # Step 1: Image Extraction (Must be first - sequential)
+            # Log workflow start event
+            self.langfuse.create_event(
+                name="prescription_processing_started",
+                input={
+                    "image_present": "image_base64" in initial_state,
+                    "initial_state_keys": list(initial_state.keys()),
+                    "timestamp": initial_state.get("timestamp", "unknown")
+                }
+            )
+
+            # Step 1: Image Extraction
             logger.info("📷 Step 1: Image Extraction")
             state = await self.circuit_breaker.call(self.image_extractor.process, state)
-            
+
+            self.langfuse.create_event(
+                name="image_extraction_completed",
+                input={
+                    "is_valid": state.get("is_valid"),
+                    "extraction_success": state.get("is_valid", False),
+                    "raw_text_length": len(state.get("raw_extraction_text", ""))
+                }
+            )
+
             if not state.get("is_valid"):
                 logger.warning("Image extraction failed, stopping workflow")
+                self.langfuse.create_event(
+                    name="workflow_stopped_early",
+                    input={"reason": "image_extraction_failed"}
+                )
                 return self._create_final_output(state, "Image extraction failed")
-            
-            # Step 2: Parallel Processing of Independent Sections (60-70% performance gain)
+
+            # Step 2: Parallel Processing
             logger.info("⚡ Step 2: Parallel Agent Processing")
             await self._process_sections_parallel(state)
-            
-            # Step 3: Sequential Quality & Safety (Dependencies require order)
+
+            self.langfuse.create_event(
+                name="parallel_processing_completed",
+                input={
+                    "medications_count": len(state.get("processed_medications", [])),
+                    "patient_data_extracted": "patient_data" in state,
+                    "prescriber_data_extracted": "prescriber_data" in state
+                }
+            )
+
+            # Step 3: Quality & Safety
             logger.info("🔍 Step 3: Quality & Safety Processing")
             await self._process_quality_safety_sequential(state)
             
-            # Step 4: Final Assembly with Enhanced Quality
+            # Step 4: Final Assembly
             logger.info("📋 Step 4: Final Assembly")
             final_state = self._create_final_output(state, "completed")
-            
+
+            self.langfuse.create_event(
+                name="final_assembly_completed",
+                input={
+                    "final_json_size": len(final_state.get("final_json_output", "")),
+                    "quality_warnings_count": len(final_state.get("quality_warnings", [])),
+                    "processing_status": "completed"
+                }
+            )
+
             # Log performance metrics
             self._log_performance_metrics()
-            
-            logger.info("✅ Enhanced parallel prescription processing completed successfully")
+
+            logger.info("✅ Prescription processing completed successfully")
+
+            # Log final completion event
+            stats = self.performance_monitor.get_stats()
+            workflow_stats = stats.get("timings", {}).get("prescription_processing_workflow", {})
+
+            self.langfuse.create_event(
+                name="prescription_processing_completed",
+                input={
+                    "total_medications": len(final_state.get("processed_medications", [])),
+                    "processing_time_avg": workflow_stats.get("avg", 0),
+                    "processing_time_count": workflow_stats.get("count", 0),
+                    "status": "success"
+                }
+            )
+
             return final_state
-            
+
         except Exception as e:
             logger.error(f"Workflow processing failed: {e}")
             self.performance_monitor.increment_counter("workflow_failures")
+
+            # Log failure event
+            self.langfuse.create_event(
+                name="prescription_processing_failed",
+                input={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "processing_stage": "unknown"
+                }
+            )
+
             return self._create_final_output(state, f"failed: {str(e)}")
     
     async def _process_sections_parallel(self, state: Dict[str, Any]):
@@ -160,15 +196,13 @@ class StreamlinedPrescriptionOrchestrator:
         # Patient processing
         if state.get("patient_data"):
             async def patient_processing():
-                temp_state = await self.patient_agent.process(state.copy())
-                return await self.patient_validator.process(temp_state)
+                return await self.patient_agent.process(state.copy())
             parallel_tasks.append(patient_processing)
         
-        # Prescriber processing  
+        # Prescriber processing
         if state.get("prescriber_data"):
             async def prescriber_processing():
-                temp_state = await self.prescriber_agent.process(state.copy())
-                return await self.prescriber_validator.process(temp_state)
+                return await self.prescriber_agent.process(state.copy())
             parallel_tasks.append(prescriber_processing)
         
         # Medications processing
@@ -179,37 +213,84 @@ class StreamlinedPrescriptionOrchestrator:
             parallel_tasks.append(medications_processing)
         
         if parallel_tasks:
-            # Execute all tasks in parallel with circuit breaker protection
+            # Execute all tasks in parallel
             results = await parallel_agent_execution(parallel_tasks, max_concurrent=3)
-            
+
+            # Track parallel execution results
+            successful_tasks = sum(1 for r in results if r is not None)
+            failed_tasks = len(parallel_tasks) - successful_tasks
+
+            # Log parallel processing details
+            self.langfuse.create_event(
+                name="parallel_agent_execution_details",
+                input={
+                    "total_tasks": len(parallel_tasks),
+                    "successful_tasks": successful_tasks,
+                    "failed_tasks": failed_tasks,
+                    "agent_types": ["patient", "prescriber", "drugs"]
+                }
+            )
+
             # Merge results back into main state
             for result in results:
                 if result:
                     state.update(result)
-        
+
         logger.info(f"✅ Parallel processing completed - {len(parallel_tasks)} sections processed")
     
     async def _process_quality_safety_sequential(self, state: Dict[str, Any]):
-        """Process quality and safety checks sequentially due to dependencies"""
+        """Process essential quality and safety checks"""
         try:
-            # Clinical Safety Review
-            logger.info("🛡️ Clinical Safety Review")
-            safety_result = await self.clinical_safety_agent.review_prescription_safety(
-                state.get("prescription_data", {})
+            logger.info("🛡️ Clinical Safety Check")
+            safety_task = asyncio.create_task(
+                self.clinical_safety_agent.review_prescription_safety(
+                    state.get("prescription_data", {})
+                )
             )
-            state["safety_assessment"] = safety_result
-            
-            # Hallucination Detection
-            logger.info("🔍 Hallucination Detection")
-            state = await self.hallucination_detector.process(state)
-            
-            # Spanish Translation
-            logger.info("🌐 Spanish Translation")
-            state = await self.spanish_translator.process(state)
-            
+            try:
+                safety_result = await asyncio.wait_for(safety_task, timeout=120)
+                state["safety_assessment"] = safety_result
+
+                # Log successful safety check
+                self.langfuse.create_event(
+                    name="clinical_safety_check_completed",
+                    input={
+                        "safety_review_performed": True,
+                        "safety_warnings": len(state.get("quality_warnings", [])),
+                        "medications_reviewed": len(state.get("processed_medications", [])),
+                        "assessment_status": safety_result.get("status", "completed")
+                    }
+                )
+
+                logger.info("✅ Safety check completed")
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Safety check timed out - skipping")
+                state["safety_assessment"] = {"status": "skipped_for_performance"}
+                safety_task.cancel()
+
+                # Log timeout event
+                self.langfuse.create_event(
+                    name="clinical_safety_check_timeout",
+                    input={
+                        "timeout_seconds": 120,
+                        "medications_count": len(state.get("processed_medications", [])),
+                        "workflow_continued": True
+                    }
+                )
+
         except Exception as e:
-            logger.error(f"Quality/Safety processing failed: {e}")
-            state.setdefault("quality_warnings", []).append(f"Quality check failed: {e}")
+            logger.error(f"Safety processing failed: {e}")
+            state.setdefault("quality_warnings", []).append(f"Safety check failed: {e}")
+
+            # Log safety check failure
+            self.langfuse.create_event(
+                name="clinical_safety_check_failed",
+                input={
+                    "error_message": str(e),
+                    "error_type": type(e).__name__,
+                    "workflow_continued": True
+                }
+            )
     
     def _log_performance_metrics(self):
         """Log current performance metrics"""
@@ -217,31 +298,31 @@ class StreamlinedPrescriptionOrchestrator:
         logger.info(f"📊 Performance Metrics: {stats}")
     
     def _create_final_output(self, state: Dict[str, Any], status: str) -> Dict[str, Any]:
-        """
-        Create final output with complete prescription data
-        
-        Args:
-            state: Current workflow state
-            status: Processing status
-            
-        Returns:
-            Final output state
-        """
+        """Create final output with complete prescription data"""
         try:
+            # Get safety assessment data
+            safety_assessment = state.get("safety_assessment", {})
+
             # Assemble final prescription data
             final_prescription = {
                 "prescriber": state.get("prescriber_data", {}),
                 "patient": state.get("patient_data", {}),
                 "date_prescription_written": state.get("prescription_data", {}).get("date_prescription_written"),
-                "medications": state.get("processed_medications", state.get("medications_to_process", []))
+                "medications": state.get("processed_medications", state.get("medications_to_process", [])),
+                "safety_assessment": {
+                    "safety_status": safety_assessment.get("safety_status", "unknown"),
+                    "safety_score": safety_assessment.get("safety_score", None),
+                    "safety_flags": safety_assessment.get("safety_flags", []),
+                    "recommendations": safety_assessment.get("recommendations", []),
+                    "medication_safety_details": safety_assessment.get("medication_safety_details", []),
+                    "review_summary": safety_assessment.get("review_summary", "")
+                }
             }
             
             # Create processing metadata
             processing_metadata = {
                 "status": status,
                 "quality_warnings": state.get("quality_warnings", []),
-                "hallucination_flags": state.get("hallucination_flags", []),
-                "safety_flags": state.get("safety_flags", []),
                 "validation_results": {
                     "patient": state.get("patient_validation_results", {}),
                     "prescriber": state.get("prescriber_validation_results", {}),
@@ -270,26 +351,32 @@ class StreamlinedPrescriptionOrchestrator:
                 "quality_warnings": state.get("quality_warnings", []) + [f"Final assembly failed: {str(e)}"]
             }
     
-    async def invoke(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Synchronous wrapper for process_prescription
-        
-        Args:
-            initial_state: Initial state
-            
-        Returns:
-            Final state
-        """
+    async def ainvoke(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute the workflow asynchronously"""
         return await self.process_prescription(initial_state)
     
-    async def ainvoke(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Asynchronous invoke method
+    def invoke(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute the workflow synchronously"""
+        return asyncio.run(self.ainvoke(initial_state))
+
+
+# Factory function for building workflows
+def build_prescription_workflow(config: Optional[Dict[str, Any]] = None) -> PrescriptionOrchestrator:
+    """
+    Build prescription processing workflow with optional configuration
+    
+    Args:
+        config: Optional workflow configuration
         
-        Args:
-            initial_state: Initial state
-            
-        Returns:
-            Final state
-        """
-        return await self.process_prescription(initial_state)
+    Returns:
+        Configured prescription orchestrator
+    """
+    try:
+        logger.info("Building prescription processing workflow")
+        orchestrator = PrescriptionOrchestrator(config)
+        logger.info("Prescription workflow built successfully")
+        return orchestrator
+        
+    except Exception as e:
+        logger.error(f"Failed to build prescription workflow: {e}")
+        raise

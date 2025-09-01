@@ -3,7 +3,7 @@ System Health Router
 FastAPI router for health monitoring endpoints
 """
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends
 from typing import Dict, Any
 from .handlers import SystemHealthChecker
 

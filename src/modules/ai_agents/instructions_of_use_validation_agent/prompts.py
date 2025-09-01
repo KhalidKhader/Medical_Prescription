@@ -34,8 +34,8 @@ Validation Tasks:
 5. PATIENT SAFETY: Check for potential harm or confusion
 
 Validation Criteria:
-- Verb matches route and form (e.g., "Take" for oral, "Apply" for topical, "Administer" for inhalation/nebulizer)
-- "Administer" is the CORRECT verb for inhalation medications - do NOT flag as unusual
+- Verb matches route and form (e.g., "Take" for oral, "Apply" for topical, Use "Give" for English and "Administer" for Spanish for inhalation/nebulizer)
+- Use "Give" for English and "Administer" for Spanish "Administer" is the CORRECT verb for inhalation medications - do NOT flag as unusual
 - Quantity is appropriate for the medication and frequency
 - Route matches medication form and RxNorm data
 - Frequency is clinically appropriate for this medication
@@ -48,7 +48,7 @@ Safety Concerns to Check:
 - Dangerous frequencies for controlled substances  
 - Missing critical safety information
 - Contradictions with RxNorm clinical data
-- NOTE: "Administer" for inhalation/nebulizer is STANDARD and CORRECT - not unusual
+- NOTE: "Administer" for inhalation/nebulizer is STANDARD and CORRECT - not unusual Use "Give" for English and "Administer" for Spanish inhalation medications
 
 Return ONLY a JSON object:
 {{

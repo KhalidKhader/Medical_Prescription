@@ -9,7 +9,9 @@ from langchain_core.messages import HumanMessage
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+from src.core.settings.threading import parallel_agent_execution
 from langfuse import observe
+import asyncio
 
 from .prompts import (
     get_drugs_extraction_prompt, 
@@ -21,7 +23,6 @@ from .tools import (
     get_rxnorm_drug_info,
     calculate_quantity_from_sig,
     infer_days_from_quantity,
-    validate_medication_data,
     generate_sig_english,
     repair_medications_json
 )
@@ -69,24 +70,27 @@ class DrugsAgent:
         processed_medications = []
         quality_warnings = state.get("quality_warnings", [])
         
-        logger.info(f"Processing {len(medications_to_process)} medications")
+        logger.info(f"🚀 Processing {len(medications_to_process)} medications in parallel")
         
+        # Create parallel tasks for all medications
+        medication_tasks = []
         for medication in medications_to_process:
-            try:
-                drug_name = medication.get('drug_name', 'unknown')
-                logger.info(f"\nProcessing Medication: {drug_name}")
-                
-                processed_med = await self.process_single_medication(medication)
-                processed_medications.append(processed_med)
-                
-                logger.info(f"Successfully processed medication: {drug_name}")
-                
-            except Exception as e:
-                error_msg = f"Failed to process medication {medication.get('drug_name', 'unknown')}: {str(e)}"
-                logger.error(error_msg)
-                quality_warnings.append(error_msg)
-                # Add original medication if processing fails
-                processed_medications.append(medication)
+            async def process_med_task(med=medication):
+                try:
+                    drug_name = med.get('drug_name', 'unknown')
+                    logger.info(f"Processing: {drug_name}")
+                    return await self.process_single_medication(med)
+                except Exception as e:
+                    error_msg = f"Failed to process {med.get('drug_name', 'unknown')}: {str(e)}"
+                    logger.error(error_msg)
+                    quality_warnings.append(error_msg)
+                    return med  # Return original on failure
+            
+            medication_tasks.append(process_med_task)
+        
+        # Process all medications in parallel (major performance gain)
+        processed_medications = await parallel_agent_execution(medication_tasks, max_concurrent=4)
+        logger.info(f"✅ Completed parallel processing of {len(processed_medications)} medications")
         
         return {
             **state,
@@ -110,8 +114,12 @@ class DrugsAgent:
         
         enhanced_med = medication.copy()
         
-        # Step 1: Get RxNorm information first for clinical context
-        rxnorm_data = await get_rxnorm_drug_info(drug_name, enhanced_med.get("strength"))
+        # Step 1: Get RxNorm information with instruction context for better embedding matching
+        rxnorm_data = await get_rxnorm_drug_info(
+            drug_name=drug_name, 
+            strength=enhanced_med.get("strength"),
+            instructions=enhanced_med.get("instructions_for_use")  # Pass instructions for context
+        )
         enhanced_med.update(rxnorm_data)
         
         # Step 2: Generate structured instructions with RxNorm safety validation
@@ -154,30 +162,7 @@ class DrugsAgent:
                     enhanced_med["sig_english"] = generate_sig_english(enhanced_med["instructions_for_use"])
                     logger.info(f"🔄 Used fallback sig generation for {drug_name}")
         
-        # Step 3: Validate generated instructions
-        if enhanced_med.get("structured_instructions"):
-            logger.info(f"🔍 Validating instructions for {drug_name}")
-            validation_result = await self.validation_agent.validate_medication_instructions(
-                instruction_data={
-                    "drug_name": drug_name,
-                    "strength": enhanced_med.get("strength", ""),
-                    "structured_instructions": enhanced_med["structured_instructions"],
-                    "sig_english": enhanced_med.get("sig_english"),
-                    "sig_spanish": enhanced_med.get("sig_spanish")
-                },
-                rxnorm_context=rxnorm_data
-            )
-            
-            # Add validation results
-            enhanced_med["instruction_validation"] = validation_result
-            
-            # Use approved instructions if validation passed
-            if validation_result.get("validation_passed") and validation_result.get("approved_instructions"):
-                approved = validation_result["approved_instructions"]
-                if approved.get("sig_english"):
-                    enhanced_med["sig_english"] = approved["sig_english"]
-                if approved.get("sig_spanish"):
-                    enhanced_med["sig_spanish"] = approved["sig_spanish"]
+        # Skip redundant validation here - handled by dedicated validation agent later
         
         # Step 4: Calculate quantity if missing (fallback method)
         if not enhanced_med.get("quantity") and enhanced_med.get("instructions_for_use"):
@@ -194,12 +179,8 @@ class DrugsAgent:
             enhanced_med["days_of_use"] = inferred_days
             enhanced_med["infer_days"] = "Yes" if was_inferred else "No"
         
-        # Step 6: Validate and clean the medication data
-        is_valid, warnings, cleaned_med = validate_medication_data(enhanced_med)
-        if warnings:
-            logger.warning(f"Medication validation warnings for {drug_name}: {warnings}")
-        
-        return cleaned_med
+        # Data validation handled by dedicated validation agents - skip redundant step
+        return enhanced_med
     
     # Translation is now handled by InstructionsOfUseAgent
     

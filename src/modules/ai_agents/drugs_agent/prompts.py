@@ -8,47 +8,77 @@ from typing import Dict, Any
 
 def get_drugs_extraction_prompt() -> str:
     """
-    Get prompt for extracting medication information from prescription
+    Get prompt for extracting medication information from prescription - Optimized for Gemini 2.5 Pro
     
     Returns:
         Drugs extraction prompt
     """
     return """
-You are a pharmacy intern working under a supervising pharmacist. Extract ONLY medication information from prescription images for pharmacist review.
+You are a highly skilled pharmacy technician with expertise in prescription interpretation. Your task is to extract medication information from prescription images with clinical precision.
 
-Extract the following medication information with maximum accuracy:
-- Drug name
-- Strength/dosage
-- Instructions for use (sig)
-- Quantity
-- Days of use (if specified)
-- Number of refills
+## EXTRACTION GUIDELINES
 
-Rules:
-1. Only extract information that is clearly visible in the image
-2. Preserve exact spelling, abbreviations, and capitalization
-3. For each medication, provide a certainty score (0-100)
-4. If quantity is not written, set infer_qty to "Yes" and calculate for 30-day supply
-5. If days of use is not written, set infer_days to "Yes" and infer from instructions
+### Core Information to Extract:
+1. **Drug Name**: Extract exactly as written (preserve spelling, capitalization, brand names)
+2. **Strength/Dosage**: Include units (mg, ml, %, etc.)
+3. **Instructions for Use**: Complete sig (route, frequency, duration)
+4. **Quantity**: Exact amount prescribed
+5. **Days of Use**: Treatment duration if specified
+6. **Refills**: Number of refills allowed
 
-Return ONLY a JSON object with this structure:
+### Critical Rules:
+- Extract ONLY what is clearly visible and legible
+- Do NOT guess or infer drug names
+- Do NOT correct spelling unless obviously a typo
+- Preserve medical abbreviations (BID, TID, PRN, etc.)
+- If unsure about any element, mark as null rather than guess
+- Provide realistic certainty scores based on image clarity
+
+### Quantity and Days Inference:
+- Set `infer_qty` to "Yes" only if quantity is completely missing
+- Set `infer_days` to "Yes" only if duration is not specified
+- Default calculations: 30-day supply for tablets/capsules
+
+### Output Format:
+Return ONLY valid JSON with this exact structure:
+
+```json
 {
     "medications": [
         {
             "drug_name": "string or null",
-            "strength": "string or null",
+            "strength": "string or null", 
             "instructions_for_use": "string or null",
             "quantity": "string or null",
             "infer_qty": "Yes or No",
-            "days_of_use": "string or null",
+            "days_of_use": "string or null", 
             "infer_days": "Yes or No",
             "refills": "string or null",
-            "certainty": "numeric 0-100"
+            "certainty": 0-100
         }
     ]
 }
+```
 
-Extract each medication as a separate object in the medications array.
+### Quality Standards:
+- Certainty 90-100: Crystal clear, no ambiguity
+- Certainty 70-89: Clear with minor interpretation needed
+- Certainty 50-69: Readable but some uncertainty
+- Certainty <50: Poor quality, significant uncertainty
+
+Extract each medication as a separate object. Focus on accuracy over completeness.
+
+### CRITICAL: Drug Form Accuracy
+- Extract EXACT form as written (tablet, capsule, liquid, injection, etc.)
+- Do NOT add descriptors not clearly visible (e.g., don't add "chewable" unless explicitly written)
+- Do NOT assume route of administration from drug name
+- Preserve original spelling and abbreviations exactly as written
+
+### Common OCR/Handwriting Errors to Watch:
+- "Kephlex" vs "Keflex" (should be Cephalexin)
+- "Claritin" forms (tablet vs chewable vs ..etc - extract only what's written)
+- Strength units (mg vs mcg vs mL)
+- Route abbreviations (PO, IV, IM, etc.)
 """
 
 
@@ -67,19 +97,28 @@ You are a pharmacy technician. Convert the following prescription instructions i
 
 Raw instructions: "{instructions}"
 
+CRITICAL: Be precise about dosage forms. Do NOT assume or change the dosage form:
+- If the prescription says "tablet" - use "tablet"
+- If it says "capsule" - use "capsule" 
+- If it says "chewable" - use "chewable tablet"
+- If it says "injection" - use appropriate injection terms
+- Do NOT convert between forms (e.g., don't change "tablet" to "capsule")
+
 Convert to clear instructions that include:
-- Action verb (take, apply, instill, etc.)
-- Quantity per dose
-- Route of administration
+- Appropriate action verb based on dosage form
+- Exact quantity per dose
+- Correct route of administration
 - Frequency
 - Duration if specified
 
 Return ONLY the clear English instruction as a single string.
 
 Examples:
-- "1 po bid" → "Take 1 tablet by mouth twice daily"
+- "1 tablet po bid" → "Take 1 tablet by mouth twice daily"
+- "1 capsule po tid" → "Take 1 capsule by mouth three times daily"
+- "1 chewable tablet po daily" → "Chew 1 chewable tablet by mouth once daily"
 - "gtts ii ou qid" → "Instill 2 drops in both eyes four times daily"
-- "apply bid prn" → "Apply twice daily as needed"
+- "30 units s/c daily" → "Inject 30 units under the skin once daily"
 """
 
 

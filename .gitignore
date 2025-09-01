@@ -337,3 +337,4 @@ target/
 *.mov
 *.wmv
 .env_example
+neo4j_data\RxTerms202507

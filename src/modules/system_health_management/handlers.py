@@ -4,6 +4,7 @@ Monitors health of all system components and external services
 """
 
 import asyncio
+import psutil
 from typing import Dict, Any, List
 from datetime import datetime
 from src.core.settings.logging import logger
@@ -163,8 +164,6 @@ class SystemHealthChecker:
         """Check system resource health"""
         try:
             logger.info("Checking system resources")
-            
-            import psutil
             
             # Get system metrics
             cpu_percent = psutil.cpu_percent(interval=1)

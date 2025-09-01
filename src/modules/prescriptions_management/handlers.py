@@ -3,14 +3,10 @@ Request handlers for prescription processing.
 Contains business logic handlers for processing prescription requests.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from fastapi import HTTPException, status
 from src.core.settings.logging import logger
 from src.modules.prescriptions_management.services import PrescriptionProcessingService
-from src.modules.prescriptions_management.schema import (
-    PrescriptionProcessingResponse
-)
-import asyncio
 
 
 class PrescriptionProcessingHandler:
@@ -82,6 +78,3 @@ class PrescriptionProcessingHandler:
                 detail=f"Failed to process prescription: {str(e)}"
             )
     
-
-    
-

@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     # =============================================================================
     # Neo4j Configuration (RxNorm KG)
     # =============================================================================
-    neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j URI")
+    neo4j_uri: str = Field(default="bolt://localhost:7689", description="Neo4j URI")
     neo4j_user: str = Field(default="neo4j", description="Neo4j user")
-    neo4j_password: str = Field(default="rxnorm2024", description="Neo4j password")
+    neo4j_password: str = Field(default="rxnorm2025", description="Neo4j password")
     neo4j_database: str = Field(default="neo4j", description="Neo4j database")
     neo4j_max_connection_lifetime: int = Field(default=30, description="Neo4j max connection lifetime in seconds")
     neo4j_max_connections: int = Field(default=50, description="Neo4j max connection pool size")
