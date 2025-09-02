@@ -7,15 +7,8 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 from json_repair import loads as repair_json_loads
+from langfuse import observe
 
-# LangFuse observability
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name: str):
-        def decorator(func):
-            return func
-        return decorator
 
 logger = logging.getLogger(__name__)
 
@@ -172,18 +165,26 @@ def parse_instruction_components(raw_instructions: str) -> Dict[str, Any]:
             "confidence": 0.7
         }
         
-        # Parse quantity
-        quantity_patterns = [
-            r'(\d+(?:\.\d+)?)\s*(?:tablet|tab|capsule|cap|drop|gtts|ml|mg)',
-            r'(\d+(?:-\d+)?)\s*(?:tablet|tab|capsule|cap|drop|gtts)',
-            r'(one|two|three|four|five|1|2|3|4|5)'
-        ]
+        # Parse quantity using string matching
+        quantity_terms = ["tablet", "tab", "capsule", "cap", "drop", "gtts", "ml", "mg"]
+        for term in quantity_terms:
+            if term in raw:
+                # Find numbers before the term
+                term_pos = raw.find(term)
+                before_term = raw[:term_pos].strip()
+                # Extract last number before term
+                nums = ''.join(c if c.isdigit() or c == '.' else ' ' for c in before_term)
+                num_parts = nums.strip().split()
+                if num_parts:
+                    components["quantity"] = num_parts[-1]
+                    break
+                    
         
-        for pattern in quantity_patterns:
-            import re
-            match = re.search(pattern, raw)
-            if match:
-                components["quantity"] = match.group(1)
+        # Check for word numbers
+        word_nums = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5"}
+        for word, num in word_nums.items():
+            if word in raw:
+                components["quantity"] = num
                 break
         
         # Parse frequency
@@ -212,23 +213,20 @@ def parse_instruction_components(raw_instructions: str) -> Dict[str, Any]:
         elif 'topical' in raw:
             components["route"] = "to affected area"
         
-        # Parse duration
-        duration_patterns = [
-            r'(?:for|x)\s*(\d+)\s*(?:day|d)',
-            r'(\d+)\s*day',
-            r'until\s+gone'
-        ]
-        
-        for pattern in duration_patterns:
-            import re
-            match = re.search(pattern, raw)
-            if match:
-                if 'until' in pattern:
-                    components["duration"] = "until gone"
-                else:
-                    days = match.group(1)
+        # Parse duration using string matching
+        if "until gone" in raw:
+            components["duration"] = "until gone"
+        else:
+            # Look for "for X days" or "X days"
+            if "day" in raw:
+                day_pos = raw.find("day")
+                before_day = raw[:day_pos].strip()
+                # Extract last number before "day"
+                nums = ''.join(c if c.isdigit() else ' ' for c in before_day)
+                num_parts = nums.strip().split()
+                if num_parts:
+                    days = num_parts[-1]
                     components["duration"] = f"for {days} days"
-                break
         
         logger.info(f"✅ Parsed components: {components}")
         return components

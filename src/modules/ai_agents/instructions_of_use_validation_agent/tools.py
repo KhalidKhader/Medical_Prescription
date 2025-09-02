@@ -6,15 +6,7 @@ Contains tools for validating medication instructions for safety and completenes
 import logging
 from typing import Dict, Any, List
 from json_repair import loads as repair_json_loads
-
-# LangFuse observability
-try:
-    from langfuse import observe
-except ImportError:
-    def observe(name: str):
-        def decorator(func):
-            return func
-        return decorator
+from langfuse import observe
 
 logger = logging.getLogger(__name__)
 

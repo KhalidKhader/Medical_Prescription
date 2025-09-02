@@ -11,8 +11,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from src.core.settings.config import settings
 from .prompts import (
     get_medication_safety_assessment_prompt,
-    get_drug_interaction_check_prompt,
-    get_prescription_safety_summary_prompt
 )
 from .tools import (
     get_rxnorm_safety_context,

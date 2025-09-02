@@ -22,8 +22,8 @@ def validate_npi_number(npi: str) -> Tuple[bool, str]:
     if not npi or not npi.strip():
         return False, ""
     
-    # Remove all non-digit characters
-    cleaned_npi = re.sub(r'[^0-9]', '', npi.strip())
+    # Remove all non-digit characters using string filtering
+    cleaned_npi = ''.join(c for c in npi.strip() if c.isdigit())
     
     # NPI should be exactly 10 digits
     if len(cleaned_npi) == 10:
@@ -49,10 +49,12 @@ def validate_dea_number(dea: str) -> Tuple[bool, str]:
     
     # DEA format: 1 letter + 6-7 digits (sometimes with additional characters)
     if len(cleaned_dea) >= 7 and cleaned_dea[0].isalpha():
-        # Extract the core DEA format (letter + digits)
-        dea_match = re.match(r'^([A-Z])([0-9]{6,7})', cleaned_dea)
-        if dea_match:
-            return True, dea_match.group(0)
+        # Extract the core DEA format using string slicing
+        letter = cleaned_dea[0]
+        digits = ''.join(c for c in cleaned_dea[1:] if c.isdigit())
+        if len(digits) >= 6:
+            core_dea = letter + digits[:7]  # Take first 7 digits max
+            return True, core_dea
     
     return False, cleaned_dea
 
@@ -70,8 +72,8 @@ def validate_contact_number(phone: str) -> Tuple[bool, str]:
     if not phone or not phone.strip():
         return False, ""
     
-    # Extract digits only
-    digits = re.sub(r'[^0-9]', '', phone.strip())
+    # Extract digits only using string filtering
+    digits = ''.join(c for c in phone.strip() if c.isdigit())
     
     # US phone numbers should have 10 digits (with area code)
     if len(digits) == 10:
@@ -106,7 +108,7 @@ def validate_prescriber_name(name: str) -> Tuple[bool, str]:
         return False, cleaned_name
     
     # Should contain letters and may contain common medical prefixes/suffixes
-    if re.search(r'[A-Za-z]', cleaned_name):
+    if any(c.isalpha() for c in cleaned_name):
         # Proper case formatting
         cleaned_name = ' '.join(word.capitalize() for word in cleaned_name.split())
         return True, cleaned_name

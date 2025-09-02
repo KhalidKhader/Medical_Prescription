@@ -3,186 +3,89 @@ Drugs Agent Prompts
 Contains prompts for extracting and processing medication information
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
-def get_drugs_extraction_prompt() -> str:
+def get_safety_aware_drug_selection_prompt(rxnorm_results: List[Dict[str, Any]], safety_assessment: Dict[str, Any], original_drug: str) -> str:
     """
-    Get prompt for extracting medication information from prescription - Optimized for Gemini 2.5 Pro
-    
+    Get prompt for selecting the best drug match avoiding wrong suffixes and using safety context
+
+    Args:
+        rxnorm_results: List of drug matches from RxNorm
+        safety_assessment: Safety assessment data
+        original_drug: Original drug name from prescription
+
     Returns:
-        Drugs extraction prompt
+        Enhanced drug selection prompt focusing on avoiding wrong suffixes
     """
-    return """
-You are a highly skilled pharmacy technician with expertise in prescription interpretation. Your task is to extract medication information from prescription images with clinical precision.
+    # Format safety information
+    safety_status = safety_assessment.get("safety_status", "unknown")
+    safety_score = safety_assessment.get("safety_score", "N/A")
+    safety_flags = safety_assessment.get("safety_flags", [])
+    recommendations = safety_assessment.get("recommendations", [])
 
-## EXTRACTION GUIDELINES
-
-### Core Information to Extract:
-1. **Drug Name**: Extract exactly as written (preserve spelling, capitalization, brand names)
-2. **Strength/Dosage**: Include units (mg, ml, %, etc.)
-3. **Instructions for Use**: Complete sig (route, frequency, duration)
-4. **Quantity**: Exact amount prescribed
-5. **Days of Use**: Treatment duration if specified
-6. **Refills**: Number of refills allowed
-
-### Critical Rules:
-- Extract ONLY what is clearly visible and legible
-- Do NOT guess or infer drug names
-- Do NOT correct spelling unless obviously a typo
-- Preserve medical abbreviations (BID, TID, PRN, etc.)
-- If unsure about any element, mark as null rather than guess
-- Provide realistic certainty scores based on image clarity
-
-### Quantity and Days Inference:
-- Set `infer_qty` to "Yes" only if quantity is completely missing
-- Set `infer_days` to "Yes" only if duration is not specified
-- Default calculations: 30-day supply for tablets/capsules
-
-### Output Format:
-Return ONLY valid JSON with this exact structure:
-
-```json
-{
-    "medications": [
-        {
-            "drug_name": "string or null",
-            "strength": "string or null", 
-            "instructions_for_use": "string or null",
-            "quantity": "string or null",
-            "infer_qty": "Yes or No",
-            "days_of_use": "string or null", 
-            "infer_days": "Yes or No",
-            "refills": "string or null",
-            "certainty": 0-100
-        }
-    ]
-}
-```
-
-### Quality Standards:
-- Certainty 90-100: Crystal clear, no ambiguity
-- Certainty 70-89: Clear with minor interpretation needed
-- Certainty 50-69: Readable but some uncertainty
-- Certainty <50: Poor quality, significant uncertainty
-
-Extract each medication as a separate object. Focus on accuracy over completeness.
-
-### CRITICAL: Drug Form Accuracy
-- Extract EXACT form as written (tablet, capsule, liquid, injection, etc.)
-- Do NOT add descriptors not clearly visible (e.g., don't add "chewable" unless explicitly written)
-- Do NOT assume route of administration from drug name
-- Preserve original spelling and abbreviations exactly as written
-
-### Common OCR/Handwriting Errors to Watch:
-- "Kephlex" vs "Keflex" (should be Cephalexin)
-- "Claritin" forms (tablet vs chewable vs ..etc - extract only what's written)
-- Strength units (mg vs mcg vs mL)
-- Route abbreviations (PO, IV, IM, etc.)
+    # Format drug options with enhanced details
+    drug_options_text = ""
+    for i, drug in enumerate(rxnorm_results[:10]):  # Show top 10 options for better selection
+        drug_options_text += f"""
+Option {i+1}:
+- RXCUI: {drug.get('rxcui', 'N/A')}
+- Name: {drug.get('drug_name', 'Unknown')}
+- Generic: {drug.get('generic_name', 'N/A')}
+- Strength: {drug.get('strength', 'N/A')}
+- Route: {drug.get('route', 'N/A')}
+- Dose Form: {drug.get('dose_form', 'N/A')}
+- Term Type: {drug.get('term_type', 'N/A')}
+- Search Method: {drug.get('search_method', 'N/A')}
+- Relevance Score: {drug.get('relevance_score', 0):.1f}
 """
 
-
-def get_sig_generation_prompt(instructions: str) -> str:
-    """
-    Get prompt for generating clear English instructions (sig)
-    
-    Args:
-        instructions: Raw prescription instructions
-        
-    Returns:
-        Sig generation prompt
-    """
     return f"""
-You are a pharmacy technician. Convert the following prescription instructions into clear, patient-friendly English.
+You are an expert clinical pharmacist selecting the most appropriate drug match from RxNorm knowledge graph.
 
-Raw instructions: "{instructions}"
+ORIGINAL PRESCRIPTION DRUG: "{original_drug}"
 
-CRITICAL: Be precise about dosage forms. Do NOT assume or change the dosage form:
-- If the prescription says "tablet" - use "tablet"
-- If it says "capsule" - use "capsule" 
-- If it says "chewable" - use "chewable tablet"
-- If it says "injection" - use appropriate injection terms
-- Do NOT convert between forms (e.g., don't change "tablet" to "capsule")
+AVAILABLE DRUG OPTIONS FROM RXNORM:{drug_options_text}
 
-Convert to clear instructions that include:
-- Appropriate action verb based on dosage form
-- Exact quantity per dose
-- Correct route of administration
-- Frequency
-- Duration if specified
+CRITICAL SELECTION RULES - AVOID WRONG SUFFIXES:
+1. **DO NOT SELECT "chewable", "rapid disintegrating", "extended release", "delayed release", "enteric coated" UNLESS explicitly ordered**
+2. **DO NOT SELECT combination products unless the original prescription clearly indicates a combination**
+3. **PREFER standard tablets/capsules over specialized forms when no specific form is mentioned**
+4. **MATCH the exact strength - avoid approximations**
+5. **ENSURE route compatibility with prescription instructions**
 
-Return ONLY the clear English instruction as a single string.
+SAFETY ASSESSMENT CONTEXT:
+- Safety Status: {safety_status}
+- Safety Score: {safety_score}/100
+- Critical Safety Flags: {', '.join(safety_flags[:5]) if safety_flags else 'None identified'}
 
-Examples:
-- "1 tablet po bid" → "Take 1 tablet by mouth twice daily"
-- "1 capsule po tid" → "Take 1 capsule by mouth three times daily"
-- "1 chewable tablet po daily" → "Chew 1 chewable tablet by mouth once daily"
-- "gtts ii ou qid" → "Instill 2 drops in both eyes four times daily"
-- "30 units s/c daily" → "Inject 30 units under the skin once daily"
-"""
+SELECTION PRIORITY (in order):
+1. **Exact Drug Name + Exact Strength + Standard Form** (tablet, capsule, solution)
+2. **Generic Equivalent + Exact Strength + Standard Form**
+3. **Brand Equivalent + Exact Strength + Standard Form**
+4. **Safety Context Match** (mentioned in safety assessment)
+5. **Highest Relevance Score** with appropriate form
 
+AVOID THESE COMMON MISTAKES:
+- Selecting "chewable" when regular tablet was prescribed
+- Choosing "extended release" for immediate release prescriptions
+- Picking combination drugs when single ingredient was ordered
+- Using wrong strength approximations
+- Mismatching routes (oral vs topical vs ophthalmic)
 
-def get_quantity_calculation_prompt(instructions: str, days_supply: int = 30) -> str:
-    """
-    Get prompt for calculating medication quantity
-    
-    Args:
-        instructions: Prescription instructions
-        days_supply: Number of days supply to calculate for
-        
-    Returns:
-        Quantity calculation prompt
-    """
-    return f"""
-You are a pharmacy technician calculating medication quantities.
+Return ONLY valid JSON:
 
-Instructions: "{instructions}"
-Days supply: {days_supply} days
-
-Calculate the total quantity needed for {days_supply} days based on the instructions.
-
-Return ONLY a JSON object:
 {{
-    "calculated_quantity": "quantity as string",
-    "calculation_reasoning": "brief explanation of calculation"
+    "selected_rxcui": "best matching RXCUI",
+    "selected_drug_name": "selected drug name",
+    "selection_reason": "why this option was selected avoiding wrong suffixes",
+    "form_justification": "why this dosage form is appropriate",
+    "strength_match": "exact or approximate strength match",
+    "avoided_issues": "any wrong suffixes or forms avoided",
+    "safety_alignment": "how well this matches safety assessment",
+    "confidence_score": 85,
+    "alternative_options": ["rxcui1", "rxcui2"]
 }}
-
-Examples:
-- "1 tablet twice daily" for 30 days = 60 tablets
-- "2 drops in each eye daily" for 30 days = 1 bottle (typically 5-10ml)
-- "Apply thin layer twice daily" for 30 days = 1 tube (typically 15-30g)
-"""
-
-
-def get_days_inference_prompt(quantity: str, instructions: str) -> str:
-    """
-    Get prompt for inferring days of use from quantity and instructions
-    
-    Args:
-        quantity: Prescribed quantity
-        instructions: Usage instructions
-        
-    Returns:
-        Days inference prompt
-    """
-    return f"""
-You are a pharmacy technician inferring days of use.
-
-Quantity: "{quantity}"
-Instructions: "{instructions}"
-
-Calculate how many days this quantity will last based on the usage instructions.
-
-Return ONLY a JSON object:
-{{
-    "inferred_days": "days as string",
-    "inference_reasoning": "brief explanation"
-}}
-
-Examples:
-- 60 tablets, "1 tablet twice daily" = 30 days
-- 10ml bottle, "2 drops twice daily" = approximately 25-30 days
-- 30g tube, "apply twice daily" = approximately 15-30 days
 """
 
 

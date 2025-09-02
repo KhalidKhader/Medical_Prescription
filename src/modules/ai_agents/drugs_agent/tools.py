@@ -10,59 +10,67 @@ from src.modules.ai_agents.utils.json_parser import parse_json
 from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
 from src.core.settings.logging import logger
 from langfuse import observe
-
+from .prompts import get_safety_aware_drug_selection_prompt
 
 @observe(name="rxnorm_comprehensive_lookup", as_type="generation", capture_input=True, capture_output=True)
-async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None) -> Dict[str, Any]:
+async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None, safety_assessment: Dict[str, Any] = None, context: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Get comprehensive drug information from RxNorm Neo4j knowledge graph with NO HALLUCINATION
-    Returns ONLY data found in RxNorm or null values
-    
+    Uses enhanced search with safety context and all extracted data
+
     Args:
         drug_name: Name of the drug
         strength: Drug strength (optional)
-        
+        instructions: Usage instructions for context
+        safety_assessment: Safety assessment data to help ranking
+        context: Additional context (brand names, etc.)
+
     Returns:
         Dictionary with RxNorm information or null values (NO HALLUCINATION)
     """
-    logger.info(f"🔍 RXNORM COMPREHENSIVE LOOKUP: Drug='{drug_name}', Strength='{strength or 'N/A'}'")
-    
+    logger.info(f"🔍 ENHANCED RXNORM LOOKUP: Drug='{drug_name}', Strength='{strength or 'N/A'}', Has Safety={safety_assessment is not None}")
+
     try:
-        # Get comprehensive drug information with all variants using embeddings and context
+        # Use enhanced comprehensive search with safety context
         comprehensive_results = await rxnorm_service.get_comprehensive_drug_info(
-            drug_name=drug_name, 
+            drug_name=drug_name,
             strength=strength,
-            instructions=instructions,  # Pass instructions for context-aware embedding search
-            context=None  # Can include additional context if needed
+            instructions=instructions,  # Pass instructions for context-aware search
+            context=context,  # Additional context for better matching
+            safety_assessment=safety_assessment  # Safety context for ranking
         )
-        
+
         if comprehensive_results:
             logger.info(f"📋 RxNorm found {len(comprehensive_results)} drug variants")
-            
-            # If strength is provided, try to find exact match
-            best_match = comprehensive_results[0]  # Default to first result
-            
-            if strength:
-                # Look for strength-specific match
-                for result in comprehensive_results:
-                    drug_name_str = result.get('drug_name', '').lower()
-                    if strength.lower() in drug_name_str:
-                        best_match = result
-                        logger.info(f"✅ Found strength-specific match: {result.get('drug_name')}")
-                        break
-            
+
+            # Use safety-aware selection if safety assessment is available and multiple options exist
+            if safety_assessment and len(comprehensive_results) > 1:
+                best_match = await _select_best_match_with_safety(comprehensive_results, safety_assessment, drug_name)
+            else:
+                # Use traditional selection logic
+                best_match = comprehensive_results[0]  # Default to first result (already ranked)
+
+                if strength:
+                    # Look for strength-specific match
+                    for result in comprehensive_results:
+                        drug_name_str = result.get('drug_name', '').lower()
+                        if strength.lower() in drug_name_str:
+                            best_match = result
+                            logger.info(f"✅ Found strength-specific match: {result.get('drug_name')}")
+                            break
+
             # Return ONLY RxNorm data with RxNav verification
             rxcui = best_match.get("rxcui")
             drug_name_found = best_match.get("drug_name")
-            
+
             if rxcui and drug_name_found:
                 # Skip RxNav verification for performance - KG data is already verified
                 verification_result = {"verified": True, "reason": "kg_verified", "source": "neo4j_rxnorm"}
-                
+
                 if verification_result.get("verified"):
                     verified_name = drug_name_found  # Use KG name directly
                     logger.info(f"✅ KG VERIFIED: RXCUI={rxcui}, Name='{verified_name}'")
-                    
+
                     return {
                         "rxcui": str(rxcui),
                         "generic_name": verified_name,
@@ -74,15 +82,16 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         "brand_ndc": None,  # Will be null unless found in RxNorm
                         "precision_match": strength is not None and any(strength.lower() in r.get('drug_name', '').lower() for r in comprehensive_results),
                         "candidates_found": len(comprehensive_results),
-                        "search_method": "verified_rxnorm_rxnav",
-                        "verification_status": "verified"
+                        "search_method": best_match.get("search_method", "verified_rxnorm_rxnav"),
+                        "verification_status": "verified",
+                        "all_candidates": comprehensive_results[:5]  # Include top 5 candidates for transparency
                     }
                 else:
                     logger.warning(f"⚠️ RxNav verification failed for RxCUI {rxcui}: {verification_result.get('reason')}")
                     # Provide RxNorm data as context even if RxNav verification fails
                     # This allows the model to make informed decisions rather than returning null
                     logger.info(f"📋 Providing RxNorm context for model evaluation: '{drug_name_found}'")
-                    
+
                     return {
                         "rxcui": str(rxcui),
                         "generic_name": drug_name_found,
@@ -94,25 +103,26 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         "brand_ndc": None,
                         "precision_match": strength is not None and any(strength.lower() in r.get('drug_name', '').lower() for r in comprehensive_results),
                         "candidates_found": len(comprehensive_results),
-                        "search_method": "rxnorm_context_only",
+                        "search_method": best_match.get("search_method", "rxnorm_context_only"),
                         "verification_status": "failed_but_context_provided",
                         "rxnorm_context": {
                             "found_in_rxnorm": True,
                             "rxnorm_name": drug_name_found,
                             "verification_issue": verification_result.get('reason', 'unknown')
-                        }
+                        },
+                        "all_candidates": comprehensive_results[:5]  # Include top 5 candidates for transparency
                     }
             else:
                 logger.warning(f"⚠️ RXNORM: Found results but missing critical data for '{drug_name}'")
         else:
             logger.warning(f"❌ RXNORM: No matches found for '{drug_name}' in knowledge graph")
-        
+
         # Return intelligent fallback with extracted information
         fallback_info = f"Drug '{drug_name}'"
         if strength:
             fallback_info += f" {strength}"
         fallback_info += " was prescribed but could not be found in the RxNorm knowledge graph."
-        
+
         logger.info(f"📝 RXNORM: Returning structured fallback for '{drug_name}'")
         return {
             "rxcui": None,
@@ -128,12 +138,13 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
             "search_method": "embedding_context",
             "verification_status": "not_found_in_kg",
             "fallback_message": fallback_info,  # Intelligent fallback message
-            "kg_status": "NOT_FOUND"  # Clear KG lookup status
+            "kg_status": "NOT_FOUND",  # Clear KG lookup status
+            "all_candidates": []  # No candidates found
         }
-        
+
     except Exception as e:
         logger.error(f"💥 RXNORM ERROR for '{drug_name}': {str(e)}")
-        
+
         # Return null structure on error - NO HALLUCINATION
         return {
             "rxcui": None,
@@ -147,13 +158,59 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
             "precision_match": False,
             "candidates_found": 0,
             "search_method": "error",
-            "verification_status": "error"
+            "verification_status": "error",
+            "all_candidates": []  # No candidates on error
         }
+
+
+async def _select_best_match_with_safety(rxnorm_results: List[Dict[str, Any]], safety_assessment: Dict[str, Any], original_drug: str) -> Dict[str, Any]:
+    """Select the best drug match using safety assessment context"""
+    try:
+        # Create safety-aware selection prompt
+        selection_prompt = get_safety_aware_drug_selection_prompt(rxnorm_results, safety_assessment, original_drug)
+
+        # Use Gemini to make the selection
+        from src.core.settings.config import settings
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import HumanMessage
+
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-pro",
+            temperature=0,
+            google_api_key=settings.google_api_key
+        )
+
+        # Get LLM selection
+        response = await llm.ainvoke([HumanMessage(content=selection_prompt)])
+        selection_text = response.content.strip()
+
+        # Parse JSON response
+        import json
+        try:
+            selection_data = json.loads(selection_text)
+            selected_rxcui = selection_data.get("selected_rxcui")
+
+            # Find the selected drug in results
+            for result in rxnorm_results:
+                if str(result.get('rxcui', '')) == str(selected_rxcui):
+                    logger.info(f"🛡️ Safety-aware selection: {result.get('drug_name')} (RXCUI: {selected_rxcui})")
+                    logger.info(f"   Reason: {selection_data.get('selection_reason', 'N/A')}")
+                    return result
+
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse safety-aware drug selection response")
+
+    except Exception as e:
+        logger.error(f"Safety-aware drug selection failed: {e}")
+
+    # Fallback to first result if safety selection fails
+    logger.info("Falling back to top-ranked result")
+    return rxnorm_results[0]
 
 
 def calculate_quantity_from_sig(instructions: str, days_supply: int = 30) -> Tuple[str, bool]:
     """
-    Calculate quantity needed based on instructions
+    Calculate quantity needed based on instructions using string matching
     
     Args:
         instructions: Prescription instructions
@@ -171,7 +228,7 @@ def calculate_quantity_from_sig(instructions: str, days_supply: int = 30) -> Tup
     daily_dose = 1  # Default
     frequency = 1   # Default
     
-    # Extract frequency
+    # Extract frequency using string matching
     if "twice" in instructions_lower or "bid" in instructions_lower or "b.i.d" in instructions_lower:
         frequency = 2
     elif "three times" in instructions_lower or "tid" in instructions_lower or "t.i.d" in instructions_lower:
@@ -181,11 +238,13 @@ def calculate_quantity_from_sig(instructions: str, days_supply: int = 30) -> Tup
     elif "daily" in instructions_lower or "qd" in instructions_lower or "once" in instructions_lower:
         frequency = 1
     
-    # Extract dose amount (look for numbers)
-    import re
-    dose_match = re.search(r'(\d+)', instructions)
-    if dose_match:
-        daily_dose = int(dose_match.group(1))
+    # Extract dose amount using simple numeric extraction
+    numeric_chars = ''.join(c for c in instructions if c.isdigit())
+    if numeric_chars:
+        try:
+            daily_dose = int(numeric_chars[:2])  # Take first 1-2 digits
+        except:
+            daily_dose = 1
     
     # Calculate total quantity
     total_quantity = daily_dose * frequency * days_supply
@@ -204,7 +263,7 @@ def calculate_quantity_from_sig(instructions: str, days_supply: int = 30) -> Tup
 
 def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, bool]:
     """
-    Infer days of use from quantity and instructions
+    Infer days of use from quantity and instructions using string matching
     
     Args:
         quantity: Prescribed quantity
@@ -217,13 +276,12 @@ def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, boo
         return "30", True  # Default
     
     try:
-        # Extract numeric quantity
-        import re
-        qty_match = re.search(r'(\d+)', quantity)
-        if not qty_match:
+        # Extract numeric quantity using simple extraction
+        qty_nums = ''.join(c for c in quantity if c.isdigit())
+        if not qty_nums:
             return "30", True
         
-        qty_num = int(qty_match.group(1))
+        qty_num = int(qty_nums[:3])  # Take first 1-3 digits
         
         # Extract frequency from instructions
         instructions_lower = instructions.lower()
@@ -236,9 +294,9 @@ def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, boo
         elif "four times" in instructions_lower or "qid" in instructions_lower:
             frequency = 4
         
-        # Extract dose per administration
-        dose_match = re.search(r'(\d+)', instructions)
-        dose_per_admin = int(dose_match.group(1)) if dose_match else 1
+        # Extract dose per administration using simple extraction
+        inst_nums = ''.join(c for c in instructions if c.isdigit())
+        dose_per_admin = int(inst_nums[:2]) if inst_nums else 1
         
         # Calculate days
         total_daily_dose = dose_per_admin * frequency
@@ -250,83 +308,6 @@ def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, boo
         pass
     
     return "30", True  # Default fallback
-
-
-def validate_medication_data(medication: Dict[str, Any]) -> Tuple[bool, List[str], Dict[str, Any]]:
-    """
-    Validate medication data structure and content
-    
-    Args:
-        medication: Medication dictionary to validate
-        
-    Returns:
-        Tuple of (is_valid, warnings, cleaned_medication)
-    """
-    warnings = []
-    cleaned_med = medication.copy()
-    
-    # Check required fields (more lenient for certain drug types)
-    drug_name = cleaned_med.get("drug_name", "")
-    strength = cleaned_med.get("strength", "")
-    
-    # Essential validation
-    if not drug_name or len(drug_name.strip()) < 2:
-        warnings.append("Drug name is required and must be valid")
-    
-    if not cleaned_med.get("instructions_for_use"):
-        warnings.append("Instructions for use are required")
-    
-    # Strength validation - more lenient for specific drug types
-    if not strength:
-        # Some drugs don't always have explicit strength (especially combinations, otic drops, etc.)
-        drug_name_lower = drug_name.lower()
-        if not any(term in drug_name_lower for term in ["otic", "eye", "ear", "drops", "cream", "ointment", "gel"]):
-            warnings.append("Missing required field: strength")
-    elif strength and not any(char.isdigit() for char in strength) and strength.upper() not in ["DS", "N/A", "VARIOUS"]:
-        # Accept DS (Double Strength), N/A, VARIOUS as valid strengths
-        warnings.append("Strength appears to lack numeric value")
-    
-    # Validate quantity
-    quantity = cleaned_med.get("quantity")
-    if quantity and str(quantity).strip():
-        if not any(char.isdigit() for char in str(quantity)):
-            # Check if it's a valid quantity description
-            valid_units = ["tabs", "capsules", "ml", "bottles", "tubes", "g", "mg", "units"]
-            if not any(unit in str(quantity).lower() for unit in valid_units):
-                warnings.append("Quantity format appears invalid")
-    
-    # Validate refills
-    refills = cleaned_med.get("refills")
-    if refills is not None:
-        try:
-            refill_num = int(str(refills).replace("refills", "").replace("refill", "").strip())
-            if refill_num < 0 or refill_num > 12:  # Reasonable refill range
-                warnings.append("Refill count appears unusual")
-            cleaned_med["refills"] = str(refill_num)
-        except (ValueError, TypeError):
-            warnings.append("Invalid refill format")
-            cleaned_med["refills"] = "0"
-    
-    # Validate certainty score
-    certainty = cleaned_med.get("certainty")
-    if certainty is not None:
-        try:
-            cert_val = int(certainty)
-            if cert_val < 0 or cert_val > 100:
-                warnings.append("Certainty should be between 0-100")
-                cleaned_med["certainty"] = 50
-        except (ValueError, TypeError):
-            warnings.append("Certainty should be numeric")
-            cleaned_med["certainty"] = 50
-    
-    # Set defaults for inference flags
-    if "infer_qty" not in cleaned_med:
-        cleaned_med["infer_qty"] = "No"
-    if "infer_days" not in cleaned_med:
-        cleaned_med["infer_days"] = "No"
-    
-    is_valid = len(warnings) == 0
-    return is_valid, warnings, cleaned_med
 
 
 def generate_sig_english(instructions: str) -> str:
@@ -388,56 +369,3 @@ def generate_sig_english(instructions: str) -> str:
     result = result.strip().capitalize()
     
     return result
-
-
-def repair_medications_json(json_text: str) -> Tuple[bool, Optional[List[Dict[str, Any]]], Optional[str]]:
-    """
-    Repair and validate medications JSON using json_repair
-    
-    Args:
-        json_text: Raw JSON text containing medications
-        
-    Returns:
-        Tuple of (is_valid, parsed_medications, error_message)
-    """
-    try:
-        parsed_data = parse_json(json_text)
-        
-        if not parsed_data:
-            return False, None, "Failed to parse JSON"
-        
-        # Extract medications array
-        if isinstance(parsed_data, dict) and "medications" in parsed_data:
-            medications = parsed_data["medications"]
-        elif isinstance(parsed_data, list):
-            medications = parsed_data
-        else:
-            return False, None, "Invalid medication data structure"
-        
-        if not isinstance(medications, list):
-            return False, None, "Medications must be a list"
-        
-        # Validate and clean each medication
-        cleaned_medications = []
-        for med in medications:
-            if isinstance(med, dict):
-                # Ensure all expected fields are present
-                expected_fields = [
-                    "drug_name", "strength", "instructions_for_use", "quantity", 
-                    "infer_qty", "days_of_use", "infer_days", "refills", "certainty"
-                ]
-                for field in expected_fields:
-                    if field not in med:
-                        med[field] = None
-                
-                cleaned_medications.append(med)
-        
-        logger.info(f"Successfully repaired medications JSON with {len(cleaned_medications)} medications")
-        return True, cleaned_medications, None
-        
-    except Exception as e:
-        logger.error(f"Medications JSON repair failed: {e}")
-        return False, None, str(e)
-
-
-# RxNav verification function removed - using KG data directly for better performance

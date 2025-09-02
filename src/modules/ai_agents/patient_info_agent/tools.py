@@ -29,8 +29,9 @@ def validate_patient_name(name: str) -> Tuple[bool, str]:
     if len(cleaned_name) < 2:
         return False, cleaned_name
     
-    # Check for invalid characters (numbers, special chars except spaces, hyphens, apostrophes)
-    if re.search(r'[^a-zA-Z\s\-\']', cleaned_name):
+    # Check for invalid characters using character checking
+    allowed_chars = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ \'-')
+    if not all(c in allowed_chars for c in cleaned_name):
         return False, cleaned_name
     
     # Proper case formatting
@@ -87,31 +88,6 @@ def validate_date_of_birth(dob: str) -> Tuple[bool, Optional[str], Optional[int]
             continue
     
     return False, None, None
-
-
-def validate_patient_address(address: str) -> Tuple[bool, str]:
-    """
-    Validate patient address format
-    
-    Args:
-        address: Address to validate
-        
-    Returns:
-        Tuple of (is_valid, cleaned_address)
-    """
-    if not address or not address.strip():
-        return False, ""
-    
-    cleaned_address = address.strip()
-    
-    # Check for minimum components (should have at least street and city/state)
-    if len(cleaned_address) < 10:  # Minimum reasonable address length
-        return False, cleaned_address
-    
-    # Basic formatting cleanup
-    cleaned_address = ' '.join(cleaned_address.split())  # Remove extra whitespace
-    
-    return True, cleaned_address
 
 
 def check_age_dob_consistency(age: str, dob: str) -> bool:

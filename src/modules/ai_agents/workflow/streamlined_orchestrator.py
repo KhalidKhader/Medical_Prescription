@@ -4,13 +4,13 @@ Combined workflow orchestration with parallel processing and performance monitor
 """
 
 import asyncio
-from typing import Dict, Any, TypedDict, Optional
+from typing import Dict, Any, Optional
 from src.core.settings.logging import logger
 from langfuse import observe
 from langfuse import Langfuse
 from src.core.settings.config import settings
 from src.core.settings.threading import (
-    parallel_agent_execution, performance_tracked, global_performance_monitor,
+    parallel_agent_execution, global_performance_monitor,
     CircuitBreaker
 )
 from src.modules.ai_agents.image_extractor_agent.agent import ImageExtractorAgent

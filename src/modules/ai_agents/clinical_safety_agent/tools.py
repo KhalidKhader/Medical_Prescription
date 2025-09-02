@@ -4,7 +4,7 @@ RxNorm integration and safety validation utilities
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from json_repair import loads as repair_json_loads
 
 logger = logging.getLogger(__name__)

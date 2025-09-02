@@ -3,7 +3,7 @@ Clinical Safety Agent Prompts - Optimized for Gemini 2.5 Pro
 High-quality prompts for comprehensive medication safety validation
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 def get_medication_safety_assessment_prompt(
@@ -86,103 +86,3 @@ Return ONLY a JSON object with this exact structure:
 }}
 
 Focus on patient safety and document concerns for supervising pharmacist review. Your recommendations will be reviewed by a licensed pharmacist."""
-
-
-def get_drug_interaction_check_prompt(medications: List[str]) -> str:
-    """
-    Generate prompt for drug-drug interaction assessment
-    """
-    
-    return f"""You are a clinical pharmacist specializing in drug interactions and polypharmacy management.
-
-DRUG INTERACTION ANALYSIS
-
-Medications to Evaluate:
-{chr(10).join([f"- {med}" for med in medications])}
-
-INTERACTION ASSESSMENT CRITERIA:
-
-1. MAJOR INTERACTIONS (Contraindicated)
-   - Life-threatening or serious adverse outcomes
-   - Requires immediate intervention
-
-2. MODERATE INTERACTIONS (Monitor Closely)  
-   - Clinically significant effects possible
-   - May require dosage adjustments or monitoring
-
-3. MINOR INTERACTIONS (Be Aware)
-   - Limited clinical significance
-   - Generally manageable with awareness
-
-CLINICAL CONSIDERATIONS:
-- Pharmacokinetic interactions (absorption, metabolism, excretion)
-- Pharmacodynamic interactions (additive, synergistic, antagonistic effects)
-- Timing-dependent interactions
-- Patient-specific risk factors
-
-Return ONLY a JSON object:
-{{
-    "interactions_found": true/false,
-    "interaction_details": [
-        {{
-            "drugs_involved": ["drug1", "drug2"],
-            "interaction_type": "MAJOR|MODERATE|MINOR",
-            "mechanism": "brief description of interaction mechanism",
-            "clinical_effect": "expected clinical outcome",
-            "management": "specific management recommendation"
-        }}
-    ],
-    "overall_severity": "NONE|MINOR|MODERATE|MAJOR",
-    "clinical_recommendations": ["specific recommendations for managing interactions"],
-    "monitoring_requirements": ["specific monitoring needs"]
-}}
-
-Be clinically accurate but avoid over-cautious assessments of theoretical interactions."""
-
-
-def get_prescription_safety_summary_prompt(
-    safety_results: List[Dict[str, Any]], 
-    overall_score: float
-) -> str:
-    """
-    Generate prompt for overall prescription safety summary
-    """
-    
-    return f"""You are a clinical pharmacy director providing a comprehensive safety summary for a prescription.
-
-PRESCRIPTION SAFETY REVIEW SUMMARY
-
-Individual Medication Safety Scores:
-{chr(10).join([f"- Medication {i+1}: {result.get('safety_score', 'N/A')}/100 (Risk: {result.get('risk_level', 'Unknown')})" for i, result in enumerate(safety_results)])}
-
-Overall Safety Score: {overall_score:.1f}/100
-
-SUMMARY REQUIREMENTS:
-
-1. OVERALL SAFETY STATUS
-   - Safe (≥90): Prescription meets high safety standards
-   - Caution (70-89): Acceptable with noted precautions  
-   - Unsafe (<70): Significant safety concerns require intervention
-
-2. KEY SAFETY CONSIDERATIONS
-   - Highlight most important safety points
-   - Identify any critical interventions needed
-   - Note monitoring requirements
-
-3. CLINICAL RECOMMENDATIONS
-   - Specific actions for prescriber/pharmacist
-   - Patient counseling points
-   - Follow-up requirements
-
-Generate a concise, professional safety summary that provides clear guidance for clinical decision-making.
-
-Return ONLY a JSON object:
-{{
-    "safety_status": "SAFE|CAUTION|UNSAFE",
-    "summary_text": "comprehensive but concise safety summary",
-    "critical_actions": ["immediate actions required if any"],
-    "patient_counseling_points": ["key points for patient education"],
-    "prescriber_recommendations": ["recommendations for prescriber"]
-}}
-
-Provide balanced, clinically-grounded assessments that support safe medication use."""

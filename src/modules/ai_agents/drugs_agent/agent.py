@@ -3,33 +3,25 @@ Drugs Agent - Medication processing with RxNorm mapping using Gemini 2.5 Pro
 Processes medications and enriches them with RxNorm data
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
 
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from src.core.settings.threading import parallel_agent_execution
 from langfuse import observe
-import asyncio
 
-from .prompts import (
-    get_drugs_extraction_prompt, 
-    get_sig_generation_prompt, 
-    get_quantity_calculation_prompt,
-    get_days_inference_prompt
-)
 from .tools import (
     get_rxnorm_drug_info,
     calculate_quantity_from_sig,
     infer_days_from_quantity,
     generate_sig_english,
-    repair_medications_json
 )
 
 # Import new instruction agents
 from ..instructions_of_use_agent.agent import InstructionsOfUseAgent
 from ..instructions_of_use_validation_agent.agent import InstructionsOfUseValidationAgent
+from src.modules.ai_agents.drug_selector_agent.agent import SmartDrugSelectorAgent
 
 
 class DrugsAgent:
@@ -46,6 +38,7 @@ class DrugsAgent:
         # Initialize instruction agents
         self.instructions_agent = InstructionsOfUseAgent()
         self.validation_agent = InstructionsOfUseValidationAgent()
+        self.smart_selector = SmartDrugSelectorAgent()
         
         logger.info("Drugs Agent initialized with Gemini 2.5 Pro and instruction agents")
     
@@ -79,17 +72,17 @@ class DrugsAgent:
                 try:
                     drug_name = med.get('drug_name', 'unknown')
                     logger.info(f"Processing: {drug_name}")
-                    return await self.process_single_medication(med)
+                    return await self.process_single_medication(med, state)
                 except Exception as e:
                     error_msg = f"Failed to process {med.get('drug_name', 'unknown')}: {str(e)}"
                     logger.error(error_msg)
                     quality_warnings.append(error_msg)
                     return med  # Return original on failure
-            
+
             medication_tasks.append(process_med_task)
         
         # Process all medications in parallel (major performance gain)
-        processed_medications = await parallel_agent_execution(medication_tasks, max_concurrent=4)
+        processed_medications = await parallel_agent_execution(medication_tasks, max_concurrent=5)
         logger.info(f"✅ Completed parallel processing of {len(processed_medications)} medications")
         
         return {
@@ -98,29 +91,39 @@ class DrugsAgent:
             "quality_warnings": quality_warnings
         }
     
-    async def process_single_medication(self, medication: Dict[str, Any]) -> Dict[str, Any]:
+    async def process_single_medication(self, medication: Dict[str, Any], state: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Process a single medication with full enhancement
-        
+        Process a single medication with full enhancement using safety context
+
         Args:
             medication: Medication data to process
-            
+            state: Workflow state containing safety assessment
+
         Returns:
             Enhanced medication data
         """
         drug_name = medication.get("drug_name")
         if not drug_name:
             return medication
-        
+
         enhanced_med = medication.copy()
-        
-        # Step 1: Get RxNorm information with instruction context for better embedding matching
+
+        # Extract safety assessment and context for better drug matching
+        safety_assessment = state.get("safety_assessment", {}) if state else {}
+        context = self._build_drug_context(medication, state)
+
+        # Step 1: Get RxNorm information with enhanced search using safety context
         rxnorm_data = await get_rxnorm_drug_info(
-            drug_name=drug_name, 
+            drug_name=drug_name,
             strength=enhanced_med.get("strength"),
-            instructions=enhanced_med.get("instructions_for_use")  # Pass instructions for context
+            instructions=enhanced_med.get("instructions_for_use"),  # Pass instructions for context
+            safety_assessment=safety_assessment,  # Use safety data for ranking
+            context=context  # Additional context for better matching
         )
         enhanced_med.update(rxnorm_data)
+        
+        # Step 1.5: Smart drug validation and correction
+        enhanced_med = await self.smart_selector.validate_and_correct_drug(enhanced_med)
         
         # Step 2: Generate structured instructions with RxNorm safety validation
         if enhanced_med.get("instructions_for_use"):
@@ -204,3 +207,37 @@ class DrugsAgent:
             **state,
             "quality_warnings": warnings
         }
+
+    def _build_drug_context(self, medication: Dict[str, Any], state: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Build comprehensive context for drug matching"""
+        context = {}
+
+        # Extract brand information from medication
+        if medication.get("brand_name"):
+            context["brand_name"] = medication["brand_name"]
+
+        # Extract generic name if different from drug_name
+        if medication.get("generic_name"):
+            context["generic_name"] = medication["generic_name"]
+        elif medication.get("drug_name"):
+            # Assume drug_name might be generic if no brand specified
+            context["generic_name"] = medication["drug_name"]
+
+        # Add patient information for context
+        if state:
+            patient_data = state.get("patient_data", {})
+            if patient_data.get("age"):
+                context["patient_age"] = patient_data["age"]
+            if patient_data.get("weight"):
+                context["patient_weight"] = patient_data["weight"]
+
+            # Add prescriber specialty if available
+            prescriber_data = state.get("prescriber_data", {})
+            if prescriber_data.get("specialty"):
+                context["prescriber_specialty"] = prescriber_data["specialty"]
+
+        # Add indication for context
+        if medication.get("indication"):
+            context["indication"] = medication["indication"]
+
+        return context

@@ -11,7 +11,6 @@ from src.core.settings.config import settings
 from .prompts import (
     get_instruction_validation_prompt,
     get_safety_cross_check_prompt,
-    get_instruction_completeness_prompt
 )
 from .tools import (
     validate_instruction_components,
