@@ -8,15 +8,14 @@ from typing import Dict, Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.core.settings.config import settings
 
-from .prompts import (
-    get_instructions_generation_prompt,
-)
-from .tools import (
+from src.modules.ai_agents.instructions_of_use_agent.prompts import get_instructions_generation_prompt
+from src.modules.ai_agents.instructions_of_use_agent.tools import(
     get_rxnorm_instruction_context,
     parse_instruction_components,
     validate_instruction_safety,
     repair_instruction_json
 )
+
 from langfuse import observe
 
 

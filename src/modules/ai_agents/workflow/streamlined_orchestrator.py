@@ -20,7 +20,7 @@ from src.modules.ai_agents.drugs_agent.agent import DrugsAgent
 from src.modules.ai_agents.drugs_validation_agent.agent import DrugsValidationAgent
 from src.modules.ai_agents.clinical_safety_agent.agent import ClinicalSafetyAgent
 from langgraph.checkpoint.memory import MemorySaver
-from .WorkflowState import WorkflowState
+from src.modules.ai_agents.workflow.WorkflowState import WorkflowState
 
 
 
@@ -53,11 +53,21 @@ class PrescriptionOrchestrator:
             self.performance_monitor = global_performance_monitor
 
             # Initialize Langfuse for single trace consolidation
-            self.langfuse = Langfuse(
-                secret_key=settings.langfuse_secret_key,
-                public_key=settings.langfuse_public_key,
-                host=settings.langfuse_host
-            )
+            if settings.langfuse_enabled:
+                try:
+                    self.langfuse = Langfuse(
+                        secret_key=settings.langfuse_secret_key,
+                        public_key=settings.langfuse_public_key,
+                        host=settings.langfuse_host,
+                        timeout=settings.langfuse_timeout
+                    )
+                    logger.info("✅ LangFuse initialized successfully")
+                except Exception as e:
+                    logger.error(f"❌ LangFuse initialization failed: {e}")
+                    self.langfuse = None
+            else:
+                logger.info("ℹ️ LangFuse disabled")
+                self.langfuse = None
 
             # Apply custom configuration if provided
             if config:

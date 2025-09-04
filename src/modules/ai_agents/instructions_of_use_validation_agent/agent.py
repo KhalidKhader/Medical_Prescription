@@ -8,16 +8,18 @@ from typing import Dict, Any, Optional
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.core.settings.config import settings
 
-from .prompts import (
+from src.modules.ai_agents.instructions_of_use_validation_agent.prompts import (
     get_instruction_validation_prompt,
     get_safety_cross_check_prompt,
 )
-from .tools import (
+
+from src.modules.ai_agents.instructions_of_use_validation_agent.tools import (
     validate_instruction_components,
     assess_safety_risks,
     validate_spanish_translation,
     repair_validation_json
 )
+
 from langfuse import observe
 
 

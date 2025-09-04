@@ -174,17 +174,17 @@ def calculate_overall_safety_score(safety_results: List[Dict[str, Any]]) -> floa
 def determine_safety_status(overall_score: float) -> str:
     """
     Determine safety status based on overall score
-    
+
     Args:
         overall_score: Overall safety score (0-100)
-        
+
     Returns:
         Safety status: "safe", "caution", or "unsafe"
     """
     try:
-        if overall_score >= 90:
+        if overall_score >= 85:  # Lower threshold for "safe" status
             return "safe"
-        elif overall_score >= 70:
+        elif overall_score >= 60:  # Higher threshold for "caution" status
             return "caution"
         else:
             return "unsafe"

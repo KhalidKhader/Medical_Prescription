@@ -162,7 +162,7 @@ def parse_instruction_components(raw_instructions: str) -> Dict[str, Any]:
             "frequency": None,
             "duration": None,
             "indication": None,
-            "confidence": 0.7
+            "confidence": 0.75
         }
         
         # Parse quantity using string matching
@@ -297,7 +297,7 @@ def validate_instruction_safety(drug_name: str, structured_instructions: Dict[st
                     validation["warnings"].append(f"Long duration ({duration}) for Schedule {schedule} controlled substance")
                     validation["safety_score"] -= 10
             except:
-                pass
+                logger.warning("Failed to parse duration")
         
         # Final safety determination
         if validation["safety_score"] < 70:

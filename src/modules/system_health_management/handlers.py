@@ -8,10 +8,11 @@ import psutil
 from typing import Dict, Any, List
 from datetime import datetime
 from src.core.settings.logging import logger
-from src.core.services.gemini.gemini import gemini_service
+from src.core.services.gemini.test_connection import gemini_test_connection
 from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
 from src.core.settings.observability import AuditLogger
 from src.core.settings.threading import global_performance_monitor, global_cache
+from src.core.services.neo4j.test_connection.test_connection import rx_norm_test_connection
 
 
 class SystemHealthChecker:
@@ -88,11 +89,18 @@ class SystemHealthChecker:
         try:
             logger.info("Checking Gemini API health")
             
-            health_data = await gemini_service.test_connection()
+            health_data = await gemini_test_connection()
+            
+            # Extract status from health data
+            status = health_data.get("status", "unhealthy")
+            
+            # Additional validation: if test_passed is False, mark as unhealthy
+            if health_data.get("test_passed") is False:
+                status = "unhealthy"
             
             return {
                 "service": "Google Gemini API",
-                "status": health_data.get("status", "unhealthy"),
+                "status": status,
                 "details": health_data,
                 "timestamp": datetime.utcnow().isoformat()
             }
@@ -111,7 +119,7 @@ class SystemHealthChecker:
         try:
             logger.info("Checking Neo4j RxNorm health")
             
-            health_data = await rxnorm_service.test_connection()
+            health_data = await rx_norm_test_connection()
             
             return {
                 "service": "Neo4j RxNorm Database",

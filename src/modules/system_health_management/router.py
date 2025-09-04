@@ -6,6 +6,7 @@ FastAPI router for health monitoring endpoints
 from fastapi import APIRouter, Depends
 from typing import Dict, Any
 from .handlers import SystemHealthChecker
+from src.modules.system_health_management.handlers import SystemHealthChecker
 
 # Create router instance
 router = APIRouter(prefix="/health", tags=["health"])

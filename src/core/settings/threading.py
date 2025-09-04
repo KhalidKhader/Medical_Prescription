@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import wraps
 from datetime import datetime, timedelta
 import random
-
+from src.core.settings.logging import logger
 # Performance and Caching Utilities for Medical Prescription Processing
 
 @dataclass

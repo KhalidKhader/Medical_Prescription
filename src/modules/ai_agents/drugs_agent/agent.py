@@ -10,8 +10,7 @@ from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from src.core.settings.threading import parallel_agent_execution
 from langfuse import observe
-
-from .tools import (
+from src.modules.ai_agents.drugs_agent.tools import (
     get_rxnorm_drug_info,
     calculate_quantity_from_sig,
     infer_days_from_quantity,
@@ -19,8 +18,8 @@ from .tools import (
 )
 
 # Import new instruction agents
-from ..instructions_of_use_agent.agent import InstructionsOfUseAgent
-from ..instructions_of_use_validation_agent.agent import InstructionsOfUseValidationAgent
+from src.modules.ai_agents.instructions_of_use_agent.agent import InstructionsOfUseAgent
+from src.modules.ai_agents.instructions_of_use_validation_agent.agent import InstructionsOfUseValidationAgent
 from src.modules.ai_agents.drug_selector_agent.agent import SmartDrugSelectorAgent
 
 

@@ -9,10 +9,10 @@ from typing import Dict, Any, List
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from src.core.settings.config import settings
-from .prompts import (
+from src.modules.ai_agents.clinical_safety_agent.prompts import (
     get_medication_safety_assessment_prompt,
 )
-from .tools import (
+from src.modules.ai_agents.clinical_safety_agent.tools import (
     get_rxnorm_safety_context,
     validate_safety_assessment_response,
     get_default_safety_assessment,

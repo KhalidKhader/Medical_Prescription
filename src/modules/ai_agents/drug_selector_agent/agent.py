@@ -10,7 +10,8 @@ from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
 import json
-from .prompts import build_drug_selection_prompt
+from src.modules.ai_agents.drug_selector_agent.prompts import build_drug_selection_prompt
+from src.core.services.neo4j.get_drug_info import get_drug_info
 
 
 class SmartDrugSelectorAgent:
@@ -87,7 +88,7 @@ class SmartDrugSelectorAgent:
         
         try:
             # Use comprehensive search from RxNorm service
-            enhanced_results = await rxnorm_service.get_comprehensive_drug_info(
+            enhanced_results = await get_drug_info(
                 drug_name=drug_name,
                 strength=strength,
                 instructions=instructions,

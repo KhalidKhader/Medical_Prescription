@@ -85,6 +85,7 @@ def validate_date_of_birth(dob: str) -> Tuple[bool, Optional[str], Optional[int]
             return True, standardized_date, age
             
         except ValueError:
+            logger.error("Failed to parse date of birth")
             continue
     
     return False, None, None
@@ -113,6 +114,7 @@ def check_age_dob_consistency(age: str, dob: str) -> bool:
             return abs(provided_age - calculated_age) <= 1
         
     except (ValueError, TypeError):
+        logger.warning("Failed to check age-DOB consistency")
         pass
     
     return False

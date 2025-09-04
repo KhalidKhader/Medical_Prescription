@@ -7,10 +7,10 @@ from typing import Dict, Any, Optional, Tuple, List
 import asyncio
 import json
 from src.modules.ai_agents.utils.json_parser import parse_json
-from src.core.services.neo4j.rxnorm_rag_service import rxnorm_service
+from src.core.services.neo4j.get_drug_info import get_drug_info
 from src.core.settings.logging import logger
 from langfuse import observe
-from .prompts import get_safety_aware_drug_selection_prompt
+from src.modules.ai_agents.drugs_agent.prompts import get_safety_aware_drug_selection_prompt
 
 @observe(name="rxnorm_comprehensive_lookup", as_type="generation", capture_input=True, capture_output=True)
 async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None, safety_assessment: Dict[str, Any] = None, context: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -32,7 +32,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
 
     try:
         # Use enhanced comprehensive search with safety context
-        comprehensive_results = await rxnorm_service.get_comprehensive_drug_info(
+        comprehensive_results = await get_drug_info(
             drug_name=drug_name,
             strength=strength,
             instructions=instructions,  # Pass instructions for context-aware search
@@ -84,7 +84,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         "candidates_found": len(comprehensive_results),
                         "search_method": best_match.get("search_method", "verified_rxnorm_rxnav"),
                         "verification_status": "verified",
-                        "all_candidates": comprehensive_results[:5]  # Include top 5 candidates for transparency
+                        "all_candidates": comprehensive_results[:10]  # Include top 5 candidates for transparency
                     }
                 else:
                     logger.warning(f"⚠️ RxNav verification failed for RxCUI {rxcui}: {verification_result.get('reason')}")
@@ -110,7 +110,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                             "rxnorm_name": drug_name_found,
                             "verification_issue": verification_result.get('reason', 'unknown')
                         },
-                        "all_candidates": comprehensive_results[:5]  # Include top 5 candidates for transparency
+                        "all_candidates": comprehensive_results[:10]  # Include top 5 candidates for transparency
                     }
             else:
                 logger.warning(f"⚠️ RXNORM: Found results but missing critical data for '{drug_name}'")
@@ -198,7 +198,7 @@ async def _select_best_match_with_safety(rxnorm_results: List[Dict[str, Any]], s
                     return result
 
         except json.JSONDecodeError:
-            logger.warning("Failed to parse safety-aware drug selection response")
+            logger.error("Failed to parse safety-aware drug selection response")
 
     except Exception as e:
         logger.error(f"Safety-aware drug selection failed: {e}")
@@ -305,7 +305,7 @@ def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, boo
             return str(max(1, days)), True
         
     except (ValueError, ZeroDivisionError):
-        pass
+        logger.error("Failed to infer days from quantity and instructions")
     
     return "30", True  # Default fallback
 

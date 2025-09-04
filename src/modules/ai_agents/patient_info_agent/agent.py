@@ -11,8 +11,8 @@ from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from langfuse import observe
 
-from .prompts import get_patient_extraction_prompt
-from .tools import repair_patient_json, extract_patient_quality_metrics
+from src.modules.ai_agents.patient_info_agent.prompts import get_patient_extraction_prompt
+from src.modules.ai_agents.patient_info_agent.tools import repair_patient_json, extract_patient_quality_metrics
 
 
 class PatientInfoAgent:

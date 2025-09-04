@@ -11,8 +11,8 @@ from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from langfuse import observe
 
-from .prompts import USER_PROMPT
-from .tools import validate_extraction_json
+from src.modules.ai_agents.image_extractor_agent.prompts import USER_PROMPT
+from src.modules.ai_agents.image_extractor_agent.tools import validate_extraction_json
 
 
 class ImageExtractorAgent:

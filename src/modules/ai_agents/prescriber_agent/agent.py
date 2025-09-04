@@ -10,8 +10,9 @@ from langchain_core.messages import HumanMessage
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
 from langfuse import observe
-from .prompts import get_prescriber_extraction_prompt
-from .tools import repair_prescriber_json, extract_prescriber_quality_metrics
+
+from src.modules.ai_agents.prescriber_agent.prompts import get_prescriber_extraction_prompt
+from src.modules.ai_agents.prescriber_agent.tools import repair_prescriber_json, extract_prescriber_quality_metrics
 
 
 class PrescriberAgent:
