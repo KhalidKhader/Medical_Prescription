@@ -21,6 +21,7 @@ from src.modules.ai_agents.drugs_agent.tools import (
 from src.modules.ai_agents.instructions_of_use_agent.agent import InstructionsOfUseAgent
 from src.modules.ai_agents.instructions_of_use_validation_agent.agent import InstructionsOfUseValidationAgent
 from src.modules.ai_agents.drug_selector_agent.agent import SmartDrugSelectorAgent
+from src.modules.ai_agents.parse_drug_components.agent import DrugComponentsAgent
 
 
 class DrugsAgent:
@@ -38,6 +39,7 @@ class DrugsAgent:
         self.instructions_agent = InstructionsOfUseAgent()
         self.validation_agent = InstructionsOfUseValidationAgent()
         self.smart_selector = SmartDrugSelectorAgent()
+        self.drug_parser = DrugComponentsAgent()
         
         logger.info("Drugs Agent initialized with Gemini 2.5 Pro and instruction agents")
     
@@ -107,17 +109,32 @@ class DrugsAgent:
 
         enhanced_med = medication.copy()
 
+        # Parse drug components to get clean drug name for search
+        parsed_components = await self.drug_parser.parse_drug_components(drug_name)
+        clean_drug_name = parsed_components.get("drug_name", drug_name)
+        
+        # Validate that parsing didn't substitute the drug name
+        if self._is_drug_substitution(drug_name, clean_drug_name):
+            logger.warning(f"Drug substitution detected: '{drug_name}' -> '{clean_drug_name}', using original")
+            clean_drug_name = drug_name
+        
+        # Update medication with parsed components
+        enhanced_med.update({
+            "drug_name": clean_drug_name,
+            "strength": parsed_components.get("strength") or enhanced_med.get("strength"),
+            "form": parsed_components.get("form") or enhanced_med.get("form"),
+            "original_drug_string": drug_name  # Keep original for reference
+        })
+
         # Extract safety assessment and context for better drug matching
         safety_assessment = state.get("safety_assessment", {}) if state else {}
-        context = self._build_drug_context(medication, state)
+        context = self._build_drug_context(enhanced_med, state)
 
-        # Step 1: Get RxNorm information with enhanced search using safety context
+        # Step 1: Get RxNorm information with clean drug name
         rxnorm_data = await get_rxnorm_drug_info(
-            drug_name=drug_name,
+            drug_name=clean_drug_name,
             strength=enhanced_med.get("strength"),
-            instructions=enhanced_med.get("instructions_for_use"),  # Pass instructions for context
-            safety_assessment=safety_assessment,  # Use safety data for ranking
-            context=context  # Additional context for better matching
+            instructions=enhanced_med.get("instructions_for_use")
         )
         enhanced_med.update(rxnorm_data)
         
@@ -240,3 +257,24 @@ class DrugsAgent:
             context["indication"] = medication["indication"]
 
         return context
+
+    def _is_drug_substitution(self, original: str, extracted: str) -> bool:
+        """Check if extracted drug name is a substitution rather than extraction"""
+        original_clean = original.lower().strip()
+        extracted_clean = extracted.lower().strip()
+        
+        # If they're the same or extracted is contained in original, it's valid
+        if extracted_clean == original_clean or extracted_clean in original_clean:
+            return False
+        
+        # If original is contained in extracted, it's valid (e.g., "Lantus" -> "Lantus SoloStar")
+        if original_clean in extracted_clean:
+            return False
+        
+        # Check for common prefixes (first 3+ characters match)
+        if len(original_clean) >= 3 and len(extracted_clean) >= 3:
+            if original_clean[:3] == extracted_clean[:3]:
+                return False
+        
+        # Otherwise, it's likely a substitution
+        return True
