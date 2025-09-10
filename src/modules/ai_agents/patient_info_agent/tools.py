@@ -171,40 +171,45 @@ def extract_patient_quality_metrics(patient_data: Dict[str, Any]) -> Dict[str, A
     return metrics
 
 
-def repair_patient_json(json_text: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+def repair_patient_json(response: str) -> Dict[str, Any]:
     """
-    Repair and validate patient JSON using json_repair
+    Repair and parse patient JSON response
     
     Args:
-        json_text: Raw JSON text
+        response: Raw LLM response
         
     Returns:
-        Tuple of (is_valid, parsed_data, error_message)
+        Parsed patient data dictionary
     """
     try:
-        parsed_data = parse_json(json_text)
-        
-        if not parsed_data:
-            return False, None, "Failed to parse JSON"
-        
-        # Ensure all expected fields are present
-        expected_fields = ["full_name", "date_of_birth", "age", "facility_name", "address", "certainty"]
-        for field in expected_fields:
-            if field not in parsed_data:
-                parsed_data[field] = None
-        
-        # Validate certainty score
-        if parsed_data.get("certainty") is not None:
-            try:
-                certainty = int(parsed_data["certainty"])
-                if certainty < 0 or certainty > 100:
-                    parsed_data["certainty"] = 50  # Default if invalid
-            except (ValueError, TypeError):
-                parsed_data["certainty"] = 50
-        
-        logger.info("Successfully repaired and validated patient JSON")
-        return True, parsed_data, None
-        
-    except Exception as e:
-        logger.error(f"Patient JSON repair failed: {e}")
-        return False, None, str(e)
+        # Try direct parsing first
+        result = parse_json(response)
+        if result and isinstance(result, dict):
+            return result
+    except Exception:
+        pass
+    
+    # Fallback: extract patient info manually
+    default_patient = {
+        "full_name": "",
+        "date_of_birth": "",
+        "age": "",
+        "facility_name": "",
+        "address": "",
+        "extraction_confidence": "low"
+    }
+    
+    # Simple regex extraction as fallback
+    lines = response.split('\n')
+    for line in lines:
+        line = line.strip().lower()
+        if 'name' in line and ':' in line:
+            default_patient["full_name"] = line.split(':', 1)[1].strip()
+        elif 'age' in line and ':' in line:
+            default_patient["age"] = line.split(':', 1)[1].strip()
+        elif ('dob' in line or 'birth' in line) and ':' in line:
+            default_patient["date_of_birth"] = line.split(':', 1)[1].strip()
+    
+    return default_patient
+
+

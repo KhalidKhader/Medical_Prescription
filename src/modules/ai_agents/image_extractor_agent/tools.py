@@ -25,7 +25,7 @@ def validate_extraction_json(json_text: str) -> Tuple[bool, Optional[Dict[str, A
             return False, None, "Failed to parse JSON"
         
         # Basic structure validation
-        required_keys = ["prescriber", "patient", "medications"]
+        required_keys = ["prescriber_data", "patient_data", "medications"]
         for key in required_keys:
             if key not in parsed_data:
                 return False, None, f"Missing required key: {key}"

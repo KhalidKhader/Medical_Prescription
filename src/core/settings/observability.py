@@ -4,11 +4,46 @@ Integrates with LangFuse for comprehensive monitoring and compliance.
 """
 
 import logging
+import time
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Callable
+from functools import wraps
 from langfuse import Langfuse
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
+
+
+def performance_tracked(operation_name: str):
+    """Decorator to track performance of operations"""
+    def decorator(func: Callable):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = await func(*args, **kwargs)
+                execution_time = time.time() - start_time
+                logger.debug(f"{operation_name} completed in {execution_time:.2f}s")
+                return result
+            except Exception as e:
+                execution_time = time.time() - start_time
+                logger.error(f"{operation_name} failed after {execution_time:.2f}s: {e}")
+                raise
+        
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(*args, **kwargs)
+                execution_time = time.time() - start_time
+                logger.debug(f"{operation_name} completed in {execution_time:.2f}s")
+                return result
+            except Exception as e:
+                execution_time = time.time() - start_time
+                logger.error(f"{operation_name} failed after {execution_time:.2f}s: {e}")
+                raise
+        
+        return async_wrapper if hasattr(func, '__code__') and func.__code__.co_flags & 0x80 else sync_wrapper
+    return decorator
 
 
 class AuditLogger:

@@ -7,7 +7,7 @@ from src.core.services.neo4j.rxnorm_rag_service import RxNormService
 from src.core.services.neo4j.orchestrator.parallel_search import parallel_search
 client = RxNormService()
 
-async def get_drug_info(drug_name: str, strength: str = None, instructions: str = None, context: Dict[str, Any] = None, safety_assessment: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+async def get_drug_info(drug_name: str, strength: str = None, instructions: str = None, context: Dict[str, Any] = None, safety_assessment: Dict[str, Any] = None, search_type: Optional[str] = None) -> List[Dict[str, Any]]:
     """Comprehensive drug search using parallel orchestrator with all context"""
     try:
         logger.info(f"🔍 Comprehensive parallel search for: '{drug_name}', strength: '{strength or 'N/A'}', instructions: '{instructions or 'N/A'}'")
@@ -20,7 +20,8 @@ async def get_drug_info(drug_name: str, strength: str = None, instructions: str 
             strength=strength,
             instructions=instructions,
             safety_context=safety_assessment,
-            limit_per_method=5
+            limit_per_method=5,
+            search_type=search_type
         )
 
         if all_results:

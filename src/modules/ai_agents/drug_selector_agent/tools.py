@@ -24,8 +24,8 @@ class DrugSelectorAgent:
             google_api_key=settings.google_api_key
         )
     
+    @staticmethod
     async def llm_select_best_match(
-        self, 
         candidates: List[Dict[str, Any]], 
         original_medication: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -39,7 +39,12 @@ class DrugSelectorAgent:
         
         try:
             message = HumanMessage(content=prompt)
-            response = await self.llm.ainvoke([message])
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.5-pro",
+                temperature=0,
+                google_api_key=settings.google_api_key
+            )
+            response = await llm.ainvoke([message])
             
             # Parse response
             # Clean and validate response content
@@ -82,4 +87,9 @@ class DrugSelectorAgent:
         # Fallback to first candidate
         return candidates[0]
     
-llm_select_best_match = DrugSelectorAgent.llm_select_best_match
+# Create an instance of the agent to use for the module-level function
+_drug_selector = DrugSelectorAgent()
+
+# Module-level function that delegates to the instance method
+async def llm_select_best_match(candidates: List[Dict[str, Any]], original_medication: Dict[str, Any]) -> Dict[str, Any]:
+    return await _drug_selector.llm_select_best_match(candidates, original_medication)

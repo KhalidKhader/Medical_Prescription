@@ -11,9 +11,14 @@ from src.core.services.neo4j.get_drug_info import get_drug_info
 from src.core.settings.logging import logger
 from langfuse import observe
 from src.modules.ai_agents.drugs_agent.prompts import get_safety_aware_drug_selection_prompt
+from src.modules.ai_agents.utils.common_tools import (
+    calculate_quantity_from_sig,
+    infer_days_from_quantity,
+    generate_sig_english
+)
 
 @observe(name="rxnorm_comprehensive_lookup", as_type="generation", capture_input=True, capture_output=True)
-async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None, safety_assessment: Dict[str, Any] = None, context: Dict[str, Any] = None) -> Dict[str, Any]:
+async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None, safety_assessment: Dict[str, Any] = None, context: Dict[str, Any] = None, medication_details: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Get comprehensive drug information from RxNorm Neo4j knowledge graph with NO HALLUCINATION
     Uses enhanced search with safety context and all extracted data
@@ -24,24 +29,103 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
         instructions: Usage instructions for context
         safety_assessment: Safety assessment data to help ranking
         context: Additional context (brand names, etc.)
+        medication_details: Parsed components from the drug string.
 
     Returns:
         Dictionary with RxNorm information or null values (NO HALLUCINATION)
     """
-    logger.info(f"🔍 ENHANCED RXNORM LOOKUP: Drug='{drug_name}', Strength='{strength or 'N/A'}', Has Safety={safety_assessment is not None}")
+    search_strength = (medication_details.get("strength") if medication_details else None) or strength
+    dose_form = (medication_details.get("dose_form") if medication_details else None)
+
+    # Gather all possible drug names for a comprehensive search
+    search_terms = {drug_name}
+    if medication_details:
+        if medication_details.get("drug_name"):
+            search_terms.add(medication_details.get("drug_name"))
+        if medication_details.get("generic_name"):
+            search_terms.add(medication_details.get("generic_name"))
+        if medication_details.get("brand_name"):
+            search_terms.add(medication_details.get("brand_name"))
+        
+        other_names = medication_details.get("other_drug_names", [])
+        if isinstance(other_names, list):
+            search_terms.update(other_names)
+
+    search_terms = {term.strip() for term in search_terms if term and term.strip()}
+    
+    logger.info(f"🔍 ENHANCED RXNORM LOOKUP: Original='{drug_name}', Strength='{search_strength or 'N/A'}', Search Terms={list(search_terms)}")
+
+    # Prepare context for the search
+    search_context = context or {}
+    if dose_form:
+        search_context['dose_form'] = dose_form
 
     try:
-        # Use enhanced comprehensive search with safety context
-        comprehensive_results = await get_drug_info(
-            drug_name=drug_name,
-            strength=strength,
-            instructions=instructions,  # Pass instructions for context-aware search
-            context=context,  # Additional context for better matching
-            safety_assessment=safety_assessment  # Safety context for ranking
-        )
+        search_tasks = []
 
+        # 1. Search for brand name
+        brand_name = medication_details.get("brand_name") if medication_details else None
+        if brand_name and brand_name.strip():
+            search_tasks.append(
+                get_drug_info(
+                    drug_name=brand_name.strip(),
+                    strength=search_strength,
+                    instructions=instructions,
+                    context=search_context,
+                    search_type='brand'
+                )
+            )
+
+        # 2. Search for generic name
+        generic_name = medication_details.get("generic_name") if medication_details else None
+        if generic_name and generic_name.strip():
+            search_tasks.append(
+                get_drug_info(
+                    drug_name=generic_name.strip(),
+                    strength=search_strength,
+                    instructions=instructions,
+                    context=search_context,
+                    search_type='generic'
+                )
+            )
+
+        # 3. Search for drug_name and other_drug_names
+        drug_names_to_search = {drug_name}
+        if medication_details:
+            if medication_details.get("drug_name"):
+                drug_names_to_search.add(medication_details.get("drug_name"))
+            other_names = medication_details.get("other_drug_names", [])
+            if isinstance(other_names, list):
+                drug_names_to_search.update(other_names)
+        
+        drug_names_to_search = {term.strip() for term in drug_names_to_search if term and term.strip()}
+        for term in drug_names_to_search:
+            if term:
+                search_tasks.append(
+                    get_drug_info(
+                        drug_name=term,
+                        strength=search_strength,
+                        instructions=instructions,
+                        context=search_context,
+                        search_type='drug'
+                    )
+                )
+        
+        all_results_lists = await asyncio.gather(*search_tasks)
+        
+        # Flatten, deduplicate, and merge results
+        comprehensive_results = []
+        seen_rxcuis = set()
+        for result_list in all_results_lists:
+            for result in result_list:
+                rxcui = result.get("rxcui")
+                if rxcui and rxcui not in seen_rxcuis:
+                    comprehensive_results.append(result)
+                    seen_rxcuis.add(rxcui)
+        
         if comprehensive_results:
-            logger.info(f"📋 RxNorm found {len(comprehensive_results)} drug variants")
+            comprehensive_results.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+            logger.info(f"📋 RxNorm found {len(comprehensive_results)} unique drug variants from {len(search_terms)} search terms.")
 
             # Use safety-aware selection if safety assessment is available and multiple options exist
             if safety_assessment and len(comprehensive_results) > 1:
@@ -208,164 +292,63 @@ async def _select_best_match_with_safety(rxnorm_results: List[Dict[str, Any]], s
     return rxnorm_results[0]
 
 
-def calculate_quantity_from_sig(instructions: str, days_supply: int = 30) -> Tuple[str, bool]:
-    """
-    Calculate quantity needed based on instructions using string matching
-    
-    Args:
-        instructions: Prescription instructions
-        days_supply: Number of days to calculate for
-        
-    Returns:
-        Tuple of (calculated_quantity, was_inferred)
-    """
-    if not instructions or not instructions.strip():
-        return "30", True  # Default fallback
-    
-    instructions_lower = instructions.lower()
-    
-    # Common patterns for quantity calculation
-    daily_dose = 1  # Default
-    frequency = 1   # Default
-    
-    # Extract frequency using string matching
-    if "twice" in instructions_lower or "bid" in instructions_lower or "b.i.d" in instructions_lower:
-        frequency = 2
-    elif "three times" in instructions_lower or "tid" in instructions_lower or "t.i.d" in instructions_lower:
-        frequency = 3
-    elif "four times" in instructions_lower or "qid" in instructions_lower or "q.i.d" in instructions_lower:
-        frequency = 4
-    elif "daily" in instructions_lower or "qd" in instructions_lower or "once" in instructions_lower:
-        frequency = 1
-    
-    # Extract dose amount using simple numeric extraction
-    numeric_chars = ''.join(c for c in instructions if c.isdigit())
-    if numeric_chars:
-        try:
-            daily_dose = int(numeric_chars[:2])  # Take first 1-2 digits
-        except:
-            daily_dose = 1
-    
-    # Calculate total quantity
-    total_quantity = daily_dose * frequency * days_supply
-    
-    # Format based on medication type
-    if any(word in instructions_lower for word in ["drop", "gtt"]):
-        # For drops, return as bottle (ml)
-        return f"{max(5, total_quantity // 20)} mL", True
-    elif any(word in instructions_lower for word in ["apply", "cream", "ointment", "gel"]):
-        # For topicals, return as tube/jar
-        return f"{max(15, total_quantity)} g", True
-    else:
-        # For tablets/capsules
-        return str(total_quantity), True
+# calculate_quantity_from_sig, infer_days_from_quantity, and generate_sig_english now imported from common_tools
 
 
-def infer_days_from_quantity(quantity: str, instructions: str) -> Tuple[str, bool]:
-    """
-    Infer days of use from quantity and instructions using string matching
-    
-    Args:
-        quantity: Prescribed quantity
-        instructions: Usage instructions
-        
-    Returns:
-        Tuple of (inferred_days, was_inferred)
-    """
-    if not quantity or not instructions:
-        return "30", True  # Default
-    
+async def process_medication_parallel(medications: List[Dict[str, Any]], state: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    """Process multiple medications in parallel"""
     try:
-        # Extract numeric quantity using simple extraction
-        qty_nums = ''.join(c for c in quantity if c.isdigit())
-        if not qty_nums:
-            return "30", True
+        import asyncio
         
-        qty_num = int(qty_nums[:3])  # Take first 1-3 digits
+        async def process_single_med(medication):
+            try:
+                drug_name = medication.get('drug_name', 'unknown')
+                logger.info(f"Processing: {drug_name}")
+                
+                safety_assessment = state.get("safety_assessment") if state else None
+                
+                # Get RxNorm information
+                rxnorm_data = await get_rxnorm_drug_info(
+                    drug_name=drug_name,
+                    strength=medication.get("strength"),
+                    instructions=medication.get("instructions_for_use"),
+                    safety_assessment=safety_assessment,
+                    medication_details=medication
+                )
+                
+                # Merge with original medication data
+                enhanced_med = {**medication, **rxnorm_data}
+                
+                # Calculate quantity if missing
+                if not enhanced_med.get("quantity") and enhanced_med.get("instructions_for_use"):
+                    calculated_qty, was_inferred = calculate_quantity_from_sig(enhanced_med["instructions_for_use"])
+                    enhanced_med["quantity"] = calculated_qty
+                    enhanced_med["infer_qty"] = "Yes" if was_inferred else "No"
+                
+                # Infer days of use if needed
+                if not enhanced_med.get("days_of_use") and enhanced_med.get("quantity") and enhanced_med.get("instructions_for_use"):
+                    inferred_days, was_inferred = infer_days_from_quantity(
+                        enhanced_med["quantity"], 
+                        enhanced_med["instructions_for_use"]
+                    )
+                    enhanced_med["days_of_use"] = inferred_days
+                    enhanced_med["infer_days"] = "Yes" if was_inferred else "No"
+                
+                return enhanced_med
+                
+            except Exception as e:
+                logger.error(f"Failed to process {medication.get('drug_name', 'unknown')}: {e}")
+                return medication  # Return original on failure
         
-        # Extract frequency from instructions
-        instructions_lower = instructions.lower()
-        frequency = 1  # Default once daily
+        # Create coroutine tasks for all medications
+        tasks = [process_single_med(med) for med in medications]
         
-        if "twice" in instructions_lower or "bid" in instructions_lower:
-            frequency = 2
-        elif "three times" in instructions_lower or "tid" in instructions_lower:
-            frequency = 3
-        elif "four times" in instructions_lower or "qid" in instructions_lower:
-            frequency = 4
+        # Process in parallel with max 5 concurrent - tasks are already coroutines
+        processed_medications = await asyncio.gather(*tasks[:5] if len(tasks) > 5 else tasks)
         
-        # Extract dose per administration using simple extraction
-        inst_nums = ''.join(c for c in instructions if c.isdigit())
-        dose_per_admin = int(inst_nums[:2]) if inst_nums else 1
+        logger.info(f"✅ Completed parallel processing of {len(processed_medications)} medications")
+        return processed_medications
         
-        # Calculate days
-        total_daily_dose = dose_per_admin * frequency
-        if total_daily_dose > 0:
-            days = qty_num // total_daily_dose
-            return str(max(1, days)), True
-        
-    except (ValueError, ZeroDivisionError):
-        logger.error("Failed to infer days from quantity and instructions")
-    
-    return "30", True  # Default fallback
-
-
-def generate_sig_english(instructions: str) -> str:
-    """
-    Generate clear English instructions from prescription sig
-    
-    Args:
-        instructions: Raw prescription instructions
-        
-    Returns:
-        Clear English instructions
-    """
-    if not instructions or not instructions.strip():
-        return ""
-    
-    # Common abbreviation mappings
-    sig_mappings = {
-        "po": "by mouth",
-        "bid": "twice daily",
-        "tid": "three times daily", 
-        "qid": "four times daily",
-        "qd": "once daily",
-        "daily": "daily",
-        "prn": "as needed",
-        "ac": "before meals",
-        "pc": "after meals",
-        "hs": "at bedtime",
-        "q4h": "every 4 hours",
-        "q6h": "every 6 hours",
-        "q8h": "every 8 hours",
-        "q12h": "every 12 hours",
-        "gtt": "drop",
-        "gtts": "drops",
-        "ou": "both eyes",
-        "od": "right eye",
-        "os": "left eye",
-        "au": "both ears",
-        "ad": "right ear",
-        "as": "left ear"
-    }
-    
-    # Start with the original instructions
-    result = instructions.lower()
-    
-    # Replace common abbreviations
-    for abbrev, full_text in sig_mappings.items():
-        result = result.replace(abbrev, full_text)
-    
-    # Add action verb if missing
-    if not any(verb in result for verb in ["take", "apply", "instill", "use", "insert"]):
-        if any(word in result for word in ["drop", "eye", "ear"]):
-            result = "instill " + result
-        elif any(word in result for word in ["cream", "ointment", "gel", "apply"]):
-            result = "apply " + result
-        else:
-            result = "take " + result
-    
-    # Capitalize first letter and clean up
-    result = result.strip().capitalize()
-    
-    return result
+    except Exception as e:
+        logger.error(f"Parallel medication processing failed: {e}")
+        return medications  # Return originals on failure

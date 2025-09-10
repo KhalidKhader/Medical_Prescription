@@ -3,12 +3,15 @@ Instructions of Use Agent Tools
 Contains tools for RxNorm lookup, instruction parsing, and safety validation
 """
 
-import json
 import logging
 from typing import Dict, Any, Optional, List
-from json_repair import loads as repair_json_loads
 from langfuse import observe
-
+from src.modules.ai_agents.utils.common_tools import (
+    infer_dosage_form,
+    infer_administration_route,
+    parse_instruction_components,
+    generate_sig_english
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,42 +77,7 @@ def get_rxnorm_instruction_context(drug_name: str, rxnorm_data: Dict[str, Any] =
         }
 
 
-def infer_dosage_form(original_name: str, rxnorm_name: str) -> str:
-    """Infer dosage form from drug names"""
-    combined = f"{original_name} {rxnorm_name}".lower()
-    
-    if any(word in combined for word in ['tablet', 'tab']):
-        return 'tablet'
-    elif any(word in combined for word in ['capsule', 'cap']):
-        return 'capsule'
-    elif any(word in combined for word in ['drop', 'solution', 'gtts']):
-        return 'drops'
-    elif any(word in combined for word in ['cream', 'ointment', 'gel', 'lotion']):
-        return 'topical'
-    elif any(word in combined for word in ['injection', 'injectable']):
-        return 'injection'
-    elif any(word in combined for word in ['patch']):
-        return 'patch'
-    else:
-        return 'unknown'
-
-
-def infer_administration_route(original_name: str, rxnorm_name: str) -> str:
-    """Infer administration route from drug names"""
-    combined = f"{original_name} {rxnorm_name}".lower()
-    
-    if any(word in combined for word in ['oral', 'tablet', 'capsule']):
-        return 'by mouth'
-    elif any(word in combined for word in ['ophthalmic', 'eye', 'ocular']):
-        return 'in eye(s)'
-    elif any(word in combined for word in ['topical', 'cream', 'ointment']):
-        return 'to affected area'
-    elif any(word in combined for word in ['vaginal']):
-        return 'vaginally'
-    elif any(word in combined for word in ['injection', 'injectable']):
-        return 'by injection'
-    else:
-        return 'as directed'
+# infer_dosage_form and infer_administration_route now imported from common_tools
 
 
 def infer_typical_frequency(drug_name: str, schedule: str) -> List[str]:
@@ -137,113 +105,14 @@ def generate_safety_notes(schedule: str, drug_name: str) -> List[str]:
     return notes
 
 
+# parse_instruction_components now imported from common_tools
 @observe(name="parse_instruction_components", as_type="generation", capture_input=True, capture_output=True)
-def parse_instruction_components(raw_instructions: str) -> Dict[str, Any]:
-    """
-    Parse raw prescription instructions into structured components
-    
-    Args:
-        raw_instructions: Raw prescription instructions
-        
-    Returns:
-        Parsed instruction components
-    """
-    try:
-        logger.info(f"📝 Parsing instruction components: '{raw_instructions}'")
-        
-        raw = raw_instructions.lower().strip()
-        
-        # Initialize components
-        components = {
-            "verb": None,
-            "quantity": None,
-            "form": None,
-            "route": None,
-            "frequency": None,
-            "duration": None,
-            "indication": None,
-            "confidence": 0.75
-        }
-        
-        # Parse quantity using string matching
-        quantity_terms = ["tablet", "tab", "capsule", "cap", "drop", "gtts", "ml", "mg"]
-        for term in quantity_terms:
-            if term in raw:
-                # Find numbers before the term
-                term_pos = raw.find(term)
-                before_term = raw[:term_pos].strip()
-                # Extract last number before term
-                nums = ''.join(c if c.isdigit() or c == '.' else ' ' for c in before_term)
-                num_parts = nums.strip().split()
-                if num_parts:
-                    components["quantity"] = num_parts[-1]
-                    break
-                    
-        
-        # Check for word numbers
-        word_nums = {"one": "1", "two": "2", "three": "3", "four": "4", "five": "5"}
-        for word, num in word_nums.items():
-            if word in raw:
-                components["quantity"] = num
-                break
-        
-        # Parse frequency
-        if 'bid' in raw or 'twice' in raw:
-            components["frequency"] = "twice daily"
-        elif 'tid' in raw or 'three times' in raw:
-            components["frequency"] = "three times daily"
-        elif 'qid' in raw or 'four times' in raw:
-            components["frequency"] = "four times daily"
-        elif 'daily' in raw or 'qd' in raw:
-            components["frequency"] = "once daily"
-        elif 'q6h' in raw:
-            components["frequency"] = "every 6 hours"
-        elif 'q4h' in raw:
-            components["frequency"] = "every 4 hours"
-        elif 'prn' in raw:
-            components["frequency"] = "as needed"
-        
-        # Parse route
-        if 'po' in raw or 'by mouth' in raw:
-            components["route"] = "by mouth"
-        elif 'ou' in raw or 'both eyes' in raw:
-            components["route"] = "in both eyes"
-        elif 'od' in raw or 'right eye' in raw:
-            components["route"] = "in right eye"
-        elif 'topical' in raw:
-            components["route"] = "to affected area"
-        
-        # Parse duration using string matching
-        if "until gone" in raw:
-            components["duration"] = "until gone"
-        else:
-            # Look for "for X days" or "X days"
-            if "day" in raw:
-                day_pos = raw.find("day")
-                before_day = raw[:day_pos].strip()
-                # Extract last number before "day"
-                nums = ''.join(c if c.isdigit() else ' ' for c in before_day)
-                num_parts = nums.strip().split()
-                if num_parts:
-                    days = num_parts[-1]
-                    components["duration"] = f"for {days} days"
-        
-        logger.info(f"✅ Parsed components: {components}")
-        return components
-        
-    except Exception as e:
-        logger.error(f"❌ Component parsing failed: {e}")
-        return {
-            "verb": None,
-            "quantity": None, 
-            "form": None,
-            "route": None,
-            "frequency": None,
-            "duration": None,
-            "indication": None,
-            "confidence": 0.0,
-            "error": str(e)
-        }
+def parse_instruction_components_with_logging(raw_instructions: str) -> Dict[str, Any]:
+    """Wrapper for parse_instruction_components with logging"""
+    logger.info(f"📝 Parsing instruction components: '{raw_instructions}'")
+    result = parse_instruction_components(raw_instructions)
+    logger.info(f"✅ Parsed components: {result}")
+    return result
 
 
 @observe(name="validate_instruction_safety", as_type="generation", capture_input=True, capture_output=True)
@@ -314,48 +183,4 @@ def validate_instruction_safety(drug_name: str, structured_instructions: Dict[st
             "concerns": [f"Validation error: {str(e)}"],
             "warnings": [],
             "recommendations": ["Manual pharmacist review required"]
-        }
-
-
-def repair_instruction_json(json_str: str) -> Dict[str, Any]:
-    """
-    Repair and validate instruction JSON response
-    
-    Args:
-        json_str: JSON string to repair
-        
-    Returns:
-        Repaired and validated JSON data
-    """
-    try:
-        # Use json_repair to fix malformed JSON
-        repaired_data = repair_json_loads(json_str)
-        
-        # Ensure required structure
-        if not isinstance(repaired_data, dict):
-            repaired_data = {"error": "Invalid JSON structure"}
-        
-        # Validate required fields
-        required_fields = ["structured_instructions", "sig_english", "sig_spanish"]
-        for field in required_fields:
-            if field not in repaired_data:
-                repaired_data[field] = None
-        
-        # Ensure structured_instructions has proper format
-        if repaired_data.get("structured_instructions"):
-            instruction_fields = ["verb", "quantity", "form", "route", "frequency", "duration", "indication"]
-            for field in instruction_fields:
-                if field not in repaired_data["structured_instructions"]:
-                    repaired_data["structured_instructions"][field] = None
-        
-        logger.info("✅ Successfully repaired instruction JSON")
-        return repaired_data
-        
-    except Exception as e:
-        logger.error(f"❌ JSON repair failed: {e}")
-        return {
-            "structured_instructions": None,
-            "sig_english": None,
-            "sig_spanish": None,
-            "error": f"JSON repair failed: {str(e)}"
         }

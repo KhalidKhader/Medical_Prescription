@@ -17,8 +17,10 @@ from src.modules.ai_agents.image_extractor_agent.agent import ImageExtractorAgen
 from src.modules.ai_agents.patient_info_agent.agent import PatientInfoAgent
 from src.modules.ai_agents.prescriber_agent.agent import PrescriberAgent
 from src.modules.ai_agents.drugs_agent.agent import DrugsAgent
-from src.modules.ai_agents.drugs_validation_agent.agent import DrugsValidationAgent
+# from src.modules.ai_agents.drugs_validation_agent.agent import DrugsValidationAgent
 from src.modules.ai_agents.clinical_safety_agent.agent import ClinicalSafetyAgent
+# from src.modules.ai_agents.instructions_of_use_agent.agent import InstructionsOfUseAgent
+# from src.modules.ai_agents.drug_selector_agent.agent import SmartDrugSelectorAgent
 from langgraph.checkpoint.memory import MemorySaver
 from src.modules.ai_agents.workflow.WorkflowState import WorkflowState
 
@@ -39,8 +41,10 @@ class PrescriptionOrchestrator:
             self.prescriber_agent = PrescriberAgent()
             self.drugs_agent = DrugsAgent()
             
-            # Essential validation agents
-            self.drugs_validator = DrugsValidationAgent()
+            # Drug processing and validation agents
+            # self.drug_selector = SmartDrugSelectorAgent()
+            # self.drugs_validator = DrugsValidationAgent()
+            # self.instructions_agent = InstructionsOfUseAgent()
             
             # Quality and safety agents
             self.clinical_safety_agent = ClinicalSafetyAgent()
@@ -219,7 +223,10 @@ class PrescriptionOrchestrator:
         if state.get("medications_to_process"):
             async def medications_processing():
                 temp_state = await self.drugs_agent.process(state.copy())
-                return await self.drugs_validator.process(temp_state)
+                # temp_state = await self.drug_selector.process(temp_state)
+                # temp_state = await self.drugs_validator.process(temp_state)
+                # return await self.instructions_agent.process(temp_state)
+                return temp_state
             parallel_tasks.append(medications_processing)
         
         if parallel_tasks:

@@ -37,7 +37,6 @@ Medication Details:
 - Strength: {strength}
 - Raw Prescription: {instructions}
 - Patient Instructions: {sig_english}
-- Note: Patient instructions are the final, clear version that patients will receive
 
 {rxnorm_info}
 
@@ -59,10 +58,9 @@ CLINICAL SAFETY EVALUATION FRAMEWORK:
    - Consider age-related dosing adjustments
 
 4. INSTRUCTION CLARITY & SAFETY
-   - Evaluate potential for patient confusion from raw prescription text
-   - Assess medication error risk factors, considering the interpreted instructions
+   - Evaluate potential for patient confusion
+   - Assess medication error risk factors
    - Check for missing critical information
-   - Note: If raw prescription uses abbreviations but patient instructions are clear and accurate, this is acceptable
 
 5. CLINICAL APPROPRIATENESS
    - Verify instructions align with standard practice
@@ -71,16 +69,10 @@ CLINICAL SAFETY EVALUATION FRAMEWORK:
 
 SAFETY SCORING CRITERIA:
 - 90-100: Excellent safety profile, minimal concerns
-- 80-89: Good safety, minor considerations noted
+- 80-89: Good safety, minor considerations noted  
 - 70-79: Acceptable with cautions, monitoring recommended
 - 60-69: Safety concerns present, review required
 - Below 60: Significant safety issues, intervention needed
-
-IMPORTANT SCORING GUIDANCE:
-- If raw prescription uses abbreviations but patient instructions are clear and clinically accurate, score should be 80-100
-- Only score below 70 if the patient instructions themselves are unclear, incorrect, or potentially dangerous
-- Focus on the final patient instructions, not just raw prescription abbreviations
-- Common abbreviations like "q8h" that are correctly interpreted as "every 8 hours" should not significantly impact safety score
 
 Return ONLY a JSON object with this exact structure:
 {{

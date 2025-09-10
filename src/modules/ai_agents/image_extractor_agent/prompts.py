@@ -4,7 +4,9 @@ Contains the exact user prompt for initial prescription extraction
 """
 
 # Updated user prompt based on manager feedback - Pharmacy Intern approach
-USER_PROMPT = """
+def get_image_extraction_prompt() -> str:
+    """Generate prompt for prescription image extraction"""
+    return """
 You are a pharmacy intern in the United States working under the supervision of a licensed pharmacist. Your supervising pharmacist will review every recommendation you make. You must respond with valid JSON only, following the exact structure requested. Do not include any explanatory text, markdown formatting, or content outside of the raw JSON response.
 
 You will be given an image of a handwritten or printed medical prescription. Your task is to analyze the prescription carefully and extract information to present to your supervising pharmacist for final review.
@@ -15,57 +17,66 @@ Follow these rules:
 3. **DRUG NAMES**: Be extremely careful with drug names. Common brand names include:
    - Extract drug names exactly as written without making assumptions
    - If handwriting is unclear, provide the closest readable interpretation
-   - Do not substitute brand names with generic names or vice versa
-4. Preserve the exact spelling, abbreviations, and capitalization from the prescription.
-5. For numeric values, use integers or decimals exactly as written.
-6. For units (mg, ml, tablets, etc.), include them exactly as shown.
-6. You may use RxNorm to add additional elements not present in the prescription regarding the medications.   You will add the RxCUI (rxcui in json), DEA Controlled Drug Schedule (drug_schedule) and the original Brand Reference Drug (Brand_Drug in json).  If you can find the information, add an active NDC Number for both the medication prescribed (ndc in json) and the NDC for the original Brand reference product (brand_ndc).
-7. You will also write a clear instruction for the patient on how to take the following medication based on the doctor's abbreviated instructions for use. Your instructions should include a verb, quantity, route and frequency. Use "Give" for English and "Administer" for Spanish inhalation medications (not "Inhale"). Please output this instruction in the json in both english (sig_english) and spanish (sig_spanish). For the Spanish SIG do not use accents on any letters.
-8. If no quantity is written for a drug, then you may calculate or infer the quantity prescribed from the instructions assuming you will dispense a 30 days supply.  If you infer the quantity, then set the json value for infer_qty to Yes, otherwise set to No.
-9. If a quantity is written but no days of use is clearly expressed, infer the days of use by utilizing the prescriber's instructions.  If you infered the days of use, then set the infer_days value of the json to Yes; otherwise set to No.
-10. Look for the number of Refills written.  This may be by medication or written once for all medications.  Return this value as part of the json (refills).
-11. Do not include any text outside the prescribed sections.
 
-Return your answer **only** as valid JSON with the following structure:
-
+OUTPUT FORMAT - Return valid JSON only:
 {
-  "prescriber": {
-    "full_name": "string or null",
-    "state_license_number": "string or null",
-"npi_number": "string or null",
-"dea_number": "string or null",
-    "address": "string or null",
-    "contact_number": "string or null",
-"certainty": "numeric or null"
-  },
-  "patient": {
-    "full_name": "string or null",
-    "date_of_birth": "string or null",
-"age": "string or null",
-"facility_name": "string or null",
-    "address": "string or null",
-"certainty": "numeric or null"
-  },
-  "date_prescription_written":"date or null",
-  "medications": [
-    {
-      "drug_name": "string or null",
-      "strength": "string or null",
-      "instructions_for_use": "string or null",
-      "quantity": "string or null",
- "infer_qty": "string or null",
-      "days_of_use": "string or null",
- "infer_days": "string or null",
- "rxcui": "string or null",
- "ndc": "string or null",
- "drug_schedule": "string or null",
- "brand_drug": "string or null",
- "brand_ndc": "string or null",
- "sig_english": "string or null",
- "sig_spanish": "string or null",
- "refills": "string or null",
- "certainty": "numeric or null"
+    "patient_data": {
+        "name": "extracted patient name",
+        "date_of_birth": "MM/DD/YYYY or as written",
+        "address": "full address if visible",
+        "phone": "phone number",
+        "insurance_info": "insurance details if visible"
+    },
+    "prescriber_data": {
+        "name": "prescriber full name",
+        "dea_number": "DEA number if visible",
+        "npi": "NPI number if visible",
+        "specialty": "medical specialty if mentioned",
+        "contact_info": "phone/address if visible"
+    },
+    "pharmacy_data": {
+        "name": "pharmacy name",
+        "address": "pharmacy address",
+        "phone": "pharmacy phone",
+        "license_number": "pharmacy license if visible"
+    },
+    "medications": [
+        {
+            "drug_name": "exact drug name as written, including strength and form if present",
+            "strength": "extracted strength with units (e.g., '25mg', '1000 MG')",
+            "other_drug_names": ["array ofspelling variations of the drug name, generic name, and brand name"],
+            "dose_form": "extracted dose form (e.g., 'Tablet', 'Oral Tablet', 'Solution for Injection')",
+            "generic_name": "generic name of the drug",
+            "brand_name": "brand name of the drug",
+            "quantity": "quantity dispensed",
+            "instructions_for_use": "complete sig/directions",
+            "ndc_number": "NDC if visible",
+            "lot_number": "lot number if visible",
+            "expiration_date": "expiration if visible",
+            "generic_substitution": "DAW code or substitution info",
+            "refills": "number of refills"
+        }
+    ],
+    "prescription_metadata": {
+        "rx_number": "prescription number",
+        "date_written": "date prescription written",
+        "date_filled": "date prescription filled",
+        "total_medications": "count of medications"
+    },
+    "extraction_quality": {
+        "image_clarity": "excellent/good/fair/poor",
+        "completeness": "percentage estimate of data extracted",
+        "confidence_level": "high/medium/low",
+        "extraction_notes": "any issues or observations, especially regarding parsing drug name, strength, and form"
     }
-  ]
 }
-"""
+
+IMPORTANT: 
+- For the 'medications' section, parse the full medication string into 'drug_name', 'strength', and 'dose_form'.
+  - 'drug_name' should be the cleanest possible base name.
+  - For "metFORMIN HCl 1000 MG Oral Tablet", you should extract: "drug_name": "metFORMIN HCl", "strength": "1000 MG", "dose_form": "Oral Tablet".
+  - For "Jardiance 25mg Tablet", you should extract: "drug_name": "Jardiance", "strength": "25mg", "dose_form": "Tablet".
+- If information is unclear, include it with a note in extraction_notes
+- Don't skip medications even if partially visible
+- Preserve exact spelling and formatting from the image
+- Include confidence assessment for each major section"""

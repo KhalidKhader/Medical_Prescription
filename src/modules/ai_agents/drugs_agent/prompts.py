@@ -6,6 +6,40 @@ Contains prompts for extracting and processing medication information
 from typing import Dict, Any, List
 
 
+def get_medication_processing_prompt(medications: list) -> str:
+    """Generate prompt for medication processing enhancement"""
+    return f"""You are a clinical pharmacist processing prescription medications. Enhance and validate the following medication data for accuracy and completeness.
+
+Medications to process:
+{medications}
+
+For each medication, provide:
+1. Enhanced drug name accuracy
+2. Strength validation and standardization
+3. Instructions clarity improvement
+4. Quantity and days supply verification
+5. Clinical appropriateness assessment
+
+Return JSON with enhanced medication data:
+{{
+    "processed_medications": [
+        {{
+            "drug_name": "standardized drug name",
+            "strength": "validated strength",
+            "instructions_for_use": "clarified instructions",
+            "quantity": "verified quantity",
+            "days_of_use": "calculated days",
+            "clinical_notes": "any clinical observations",
+            "confidence": number_0_to_100
+        }}
+    ],
+    "processing_summary": {{
+        "total_processed": number,
+        "enhancements_made": ["list of improvements"],
+        "warnings": ["any concerns found"]
+    }}
+}}"""
+
 def get_safety_aware_drug_selection_prompt(rxnorm_results: List[Dict[str, Any]], safety_assessment: Dict[str, Any], original_drug: str) -> str:
     """
     Get prompt for selecting the best drug match avoiding wrong suffixes and using safety context
@@ -87,5 +121,3 @@ Return ONLY valid JSON:
     "alternative_options": ["rxcui1", "rxcui2"]
 }}
 """
-
-

@@ -11,7 +11,8 @@ async def parallel_search(
     strength: str = None,
     instructions: str = None,
     safety_context: Dict[str, Any] = None,
-    limit_per_method: int = 5
+    limit_per_method: int = 5,
+    search_type: Optional[str] = None
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Execute all search methods in parallel for comprehensive results
@@ -22,6 +23,7 @@ async def parallel_search(
         instructions: Usage instructions (optional)
         safety_context: Safety assessment context (optional)
         limit_per_method: Results limit per search method
+        search_type: The type of search to perform ('brand', 'drug', 'generic', or None for all).
         
     Returns:
         Dictionary with results from each search method
@@ -32,61 +34,64 @@ async def parallel_search(
         # Create all search tasks to run in parallel
         search_tasks = []
         
-        # 1. Exact match searches
-        search_tasks.append(
-            client._run_search_method("exact_match", client.exact_search.search_exact_drug_name, drug_name, limit_per_method)
-        )
-        if strength:
+        # 1. General drug searches (exact, fuzzy, embedding, synonym)
+        if search_type in [None, 'drug', 'generic']:
+            # Exact match searches
             search_tasks.append(
-                client._run_search_method("exact_match_strength", client.exact_search.search_exact_with_strength, drug_name, strength, limit_per_method)
+                client._run_search_method("exact_match", client.exact_search.search_exact_drug_name, drug_name, limit_per_method)
             )
-        
-        # 2. Fuzzy match searches
-        search_tasks.append(
-            client._run_search_method("fuzzy_match", client.fuzzy_search.search_fuzzy_drug_name, drug_name, limit_per_method)
-        )
-        if strength:
+            if strength:
+                search_tasks.append(
+                    client._run_search_method("exact_match_strength", client.exact_search.search_exact_with_strength, drug_name, strength, limit_per_method)
+                )
+            
+            # Fuzzy match searches
             search_tasks.append(
-                client._run_search_method("fuzzy_match_strength", client.fuzzy_search.search_fuzzy_with_strength, drug_name, strength, limit_per_method)
+                client._run_search_method("fuzzy_match", client.fuzzy_search.search_fuzzy_drug_name, drug_name, limit_per_method)
             )
-        search_tasks.append(
-            client._run_search_method("word_overlap", client.fuzzy_search.search_word_overlap, drug_name, limit_per_method)
-        )
-        
-        # 3. Embedding searches
-        search_tasks.append(
-            client._run_search_method("embedding_search", client.embedding_search.search_by_embedding, drug_name, limit_per_method)
-        )
-        if strength:
+            if strength:
+                search_tasks.append(
+                    client._run_search_method("fuzzy_match_strength", client.fuzzy_search.search_fuzzy_with_strength, drug_name, strength, limit_per_method)
+                )
             search_tasks.append(
-                client._run_search_method("embedding_strength", client.embedding_search.search_by_embedding_with_strength, drug_name, strength, limit_per_method)
+                client._run_search_method("word_overlap", client.fuzzy_search.search_word_overlap, drug_name, limit_per_method)
             )
-        
-        # 4. Brand searches
-        search_tasks.append(
-            client._run_search_method("brand_exact", client.brand_search.search_brand_exact, drug_name, limit_per_method)
-        )
-        search_tasks.append(
-            client._run_search_method("brand_fuzzy", client.brand_search.search_brand_fuzzy, drug_name, limit_per_method)
-        )
-        search_tasks.append(
-            client._run_search_method("generic_to_brand", client.brand_search.search_generic_to_brand, drug_name, limit_per_method)
-        )
-        if strength:
+            
+            # Embedding searches
             search_tasks.append(
-                client._run_search_method("brand_strength", client.brand_search.search_brand_with_strength, drug_name, strength, limit_per_method)
+                client._run_search_method("embedding_search", client.embedding_search.search_by_embedding, drug_name, limit_per_method)
             )
-        
-        # 5. Synonym searches
-        search_tasks.append(
-            client._run_search_method("synonym_search", client.synonym_search.search_by_synonyms, drug_name, limit_per_method)
-        )
-        if strength:
+            if strength:
+                search_tasks.append(
+                    client._run_search_method("embedding_strength", client.embedding_search.search_by_embedding_with_strength, drug_name, strength, limit_per_method)
+                )
+            
+            # Synonym searches
             search_tasks.append(
-                client._run_search_method("synonym_strength", client.synonym_search.search_synonyms_with_strength, drug_name, strength, limit_per_method)
+                client._run_search_method("synonym_search", client.synonym_search.search_by_synonyms, drug_name, limit_per_method)
             )
+            if strength:
+                search_tasks.append(
+                    client._run_search_method("synonym_strength", client.synonym_search.search_synonyms_with_strength, drug_name, strength, limit_per_method)
+                )
         
-        # 6. Instruction searches
+        # 2. Brand searches
+        if search_type in [None, 'brand']:
+            search_tasks.append(
+                client._run_search_method("brand_exact", client.brand_search.search_brand_exact, drug_name, limit_per_method)
+            )
+            search_tasks.append(
+                client._run_search_method("brand_fuzzy", client.brand_search.search_brand_fuzzy, drug_name, limit_per_method)
+            )
+            search_tasks.append(
+                client._run_search_method("generic_to_brand", client.brand_search.search_generic_to_brand, drug_name, limit_per_method)
+            )
+            if strength:
+                search_tasks.append(
+                    client._run_search_method("brand_strength", client.brand_search.search_brand_with_strength, drug_name, strength, limit_per_method)
+                )
+        
+        # 3. Instruction searches
         if instructions:
             search_tasks.append(
                 client._run_search_method("instruction_search", client.instruction_search.search_by_instructions, drug_name, instructions, limit_per_method)
