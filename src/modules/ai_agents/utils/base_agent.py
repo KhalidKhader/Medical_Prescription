@@ -8,42 +8,10 @@ from abc import ABC, abstractmethod
 from src.modules.ai_agents.utils.json_parser import parse_json
 from src.core.settings.logging import logger
 from langchain_core.messages import HumanMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from src.core.settings.config import settings
+from src.core.services.gemini.client import gemini_client
 from langfuse import observe
 import time
-
-
-class AgentScratchpad:
-    """Agent scratchpad for tracking thoughts and observations"""
-    
-    def __init__(self):
-        self.thoughts = []
-        self.observations = []
-        self.actions = []
-    
-    def add_thought(self, thought: str):
-        """Add a thought to the scratchpad"""
-        self.thoughts.append(f"Thought: {thought}")
-    
-    def add_observation(self, observation: str):
-        """Add an observation to the scratchpad"""
-        self.observations.append(f"Observation: {observation}")
-    
-    def add_action(self, action: str):
-        """Add an action to the scratchpad"""
-        self.actions.append(f"Action: {action}")
-    
-    def get_context(self) -> str:
-        """Get formatted scratchpad context"""
-        all_entries = self.thoughts + self.observations + self.actions
-        return "\n".join(all_entries[-10:])  # Last 10 entries
-    
-    def clear(self):
-        """Clear the scratchpad"""
-        self.thoughts.clear()
-        self.observations.clear()
-        self.actions.clear()
+from src.modules.ai_agents.utils.agent_scratchpad import AgentScratchpad
 
 
 class BaseAgent(ABC):
@@ -54,12 +22,8 @@ class BaseAgent(ABC):
         self.agent_name = agent_name
         self.scratchpad = AgentScratchpad()
         
-        # Initialize LLM
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-pro",
-            temperature=0,
-            google_api_key=settings.google_api_key
-        )
+        # Initialize LLM from the central client
+        self.llm = gemini_client.langchain_llm
         
         logger.info(f"{agent_name} initialized")
     

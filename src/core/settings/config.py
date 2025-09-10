@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = Field(description="LangFuse secret key - REQUIRED")
     langfuse_public_key: str = Field(description="LangFuse public key - REQUIRED")
     langfuse_host: str = Field(default="https://us.cloud.langfuse.com", description="LangFuse host")
-    langfuse_timeout: int = Field(default=2, description="LangFuse request timeout in seconds")
+    langfuse_timeout: int = Field(default=25, description="LangFuse request timeout in seconds")
     langfuse_enabled: bool = Field(default=True, description="Enable LangFuse observability (set to false if network issues)")
 
     # =============================================================================

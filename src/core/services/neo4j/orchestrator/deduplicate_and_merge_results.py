@@ -61,7 +61,7 @@ def deduplicate_and_merge_results(all_results: Dict[str, List[Dict[str, Any]]]) 
                         result["primary_search_method"] = method
                         merged_results.append(result)
         
-        logger.info(f"🔄 Deduplication complete: {len(merged_results)} unique drugs from {len(seen_rxcuis)} RXCUIs")
+        logger.info(f" Deduplication complete: {len(merged_results)} unique drugs from {len(seen_rxcuis)} RXCUIs")
         return merged_results
         
     except Exception as e:

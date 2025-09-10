@@ -10,7 +10,7 @@ client = RxNormService()
 async def get_drug_info(drug_name: str, strength: str = None, instructions: str = None, context: Dict[str, Any] = None, safety_assessment: Dict[str, Any] = None, search_type: Optional[str] = None) -> List[Dict[str, Any]]:
     """Comprehensive drug search using parallel orchestrator with all context"""
     try:
-        logger.info(f"🔍 Comprehensive parallel search for: '{drug_name}', strength: '{strength or 'N/A'}', instructions: '{instructions or 'N/A'}'")
+        logger.info(f" Comprehensive parallel search for: '{drug_name}', strength: '{strength or 'N/A'}', instructions: '{instructions or 'N/A'}'")
 
         client.query_stats["total_queries"] += 1
         
@@ -35,10 +35,10 @@ async def get_drug_info(drug_name: str, strength: str = None, instructions: str 
             
             client.query_stats["successful_queries"] += 1
             client.query_stats["comprehensive_matches"] += 1
-            logger.info(f"✅ Comprehensive search found {len(scored_results)} matches for '{drug_name}'")
+            logger.info(f" Comprehensive search found {len(scored_results)} matches for '{drug_name}'")
             return scored_results[:10]  # Return top 10 matches for better selection
         else:
-            logger.warning(f"❌ No matches found for '{drug_name}' in comprehensive search")
+            logger.warning(f" No matches found for '{drug_name}' in comprehensive search")
             return []
 
     except Exception as e:

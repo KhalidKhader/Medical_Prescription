@@ -76,7 +76,7 @@ class DrugSelectorAgent:
             # Find selected candidate
             for candidate in candidates:
                 if str(candidate.get('rxcui', '')) == str(selected_rxcui):
-                    logger.info(f"🎯 LLM selected: {candidate.get('drug_name')} (RXCUI: {selected_rxcui})")
+                    logger.info(f" LLM selected: {candidate.get('drug_name')} (RXCUI: {selected_rxcui})")
                     return candidate
             
             logger.warning(f"Selected RXCUI {selected_rxcui} not found in candidates")

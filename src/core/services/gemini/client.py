@@ -1,15 +1,10 @@
 """
 Gemini Client - Consolidated implementation with processing and models
 """
-
-import base64
 import time
-from typing import Dict, Any, Optional
 from google import genai
-from google.genai.types import Part, Content, GenerateContentConfig, SafetySetting
-from langchain_core.messages import HumanMessage, SystemMessage
+from google.genai.types import Content, GenerateContentConfig, SafetySetting
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langfuse import observe
 from langfuse import Langfuse
 from src.core.settings.config import settings
 from src.core.settings.logging import logger
@@ -54,6 +49,13 @@ class GeminiClient:
             safety_settings=self.safety_settings
         )
 
+        self.langchain_llm = ChatGoogleGenerativeAI(
+            model=self.model,
+            google_api_key=settings.google_api_key,
+            generation_config=self.generate_config
+        )
+
+
         # Initialize Langfuse
         if settings.langfuse_enabled:
             try:
@@ -70,5 +72,9 @@ class GeminiClient:
             self.langfuse = None
 
         logger.info("Gemini client initialized with Gemini 2.5 Pro")
+
+
+# Create a singleton instance to be used across the application
+gemini_client = GeminiClient()
     
  

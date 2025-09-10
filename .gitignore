@@ -118,13 +118,28 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
-# Environments
+# Environments and Secrets
 .env
 .env.*
 !.env.example
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
 .venv/
 venv/
 env/
+keys/
+secrets/
+**/secrets/
+**/*.key
+**/*.pem
+**/*.crt
+**/*.cer
+**/*.p12
+**/*.pfx
+**/credentials.*
 
 # Spyder project settings
 .spyderproject
@@ -336,5 +351,6 @@ target/
 *.flv
 *.mov
 *.wmv
-.env_example
 neo4j_data\RxTerms202507
+
+.env_backup

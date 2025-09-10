@@ -3,7 +3,7 @@ Drugs Agent Tools
 Contains tools for medication processing including RxNorm integration
 """
 
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, Tuple, List, Union
 import asyncio
 import json
 from src.modules.ai_agents.utils.json_parser import parse_json
@@ -16,6 +16,22 @@ from src.modules.ai_agents.utils.common_tools import (
     infer_days_from_quantity,
     generate_sig_english
 )
+
+def _get_field_value(field: Union[Dict[str, Any], str, None]) -> Optional[str]:
+    """Safely gets the string value from a field which could be a dict, string, or other type."""
+    if field is None:
+        return None
+    if isinstance(field, dict):
+        # Try to get value from dict, default to first value if "value" key doesn't exist
+        if "value" in field:
+            value = field["value"]
+        else:
+            # Take the first value from the dict if it exists
+            value = next(iter(field.values()), None) if field else None
+        return str(value).strip() if value is not None else None
+    if isinstance(field, (str, int, float)):
+        return str(field).strip()
+    return None
 
 @observe(name="rxnorm_comprehensive_lookup", as_type="generation", capture_input=True, capture_output=True)
 async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instructions: str = None, safety_assessment: Dict[str, Any] = None, context: Dict[str, Any] = None, medication_details: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -34,26 +50,44 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
     Returns:
         Dictionary with RxNorm information or null values (NO HALLUCINATION)
     """
-    search_strength = (medication_details.get("strength") if medication_details else None) or strength
-    dose_form = (medication_details.get("dose_form") if medication_details else None)
+    search_strength = _get_field_value(medication_details.get("strength")) if medication_details else strength
+    dose_form = _get_field_value(medication_details.get("dose_form")) if medication_details else None
 
     # Gather all possible drug names for a comprehensive search
-    search_terms = {drug_name}
+    search_terms = set()
+    
+    # Safely add the primary drug name
+    if drug_name:
+        drug_name_str = _get_field_value(drug_name)
+        if drug_name_str:
+            search_terms.add(drug_name_str)
+    
+    # Add additional names from medication details
     if medication_details:
-        if medication_details.get("drug_name"):
-            search_terms.add(medication_details.get("drug_name"))
-        if medication_details.get("generic_name"):
-            search_terms.add(medication_details.get("generic_name"))
-        if medication_details.get("brand_name"):
-            search_terms.add(medication_details.get("brand_name"))
+        # Add drug name variations
+        for field in ["drug_name", "generic_name", "brand_name"]:
+            field_value = medication_details.get(field)
+            if field_value:
+                cleaned_value = _get_field_value(field_value)
+                if cleaned_value:
+                    search_terms.add(cleaned_value)
         
+        # Add other drug names
         other_names = medication_details.get("other_drug_names", [])
         if isinstance(other_names, list):
-            search_terms.update(other_names)
-
-    search_terms = {term.strip() for term in search_terms if term and term.strip()}
+            for name in other_names:
+                cleaned_name = _get_field_value(name)
+                if cleaned_name:
+                    search_terms.add(cleaned_name)
+        elif other_names:  # Handle case where other_names is a single value
+            cleaned_other = _get_field_value(other_names)
+            if cleaned_other:
+                search_terms.add(cleaned_other)
+                
+    # Final cleanup - ensure all terms are valid strings
+    search_terms = {term.strip() for term in search_terms if isinstance(term, str) and term.strip()}
     
-    logger.info(f"🔍 ENHANCED RXNORM LOOKUP: Original='{drug_name}', Strength='{search_strength or 'N/A'}', Search Terms={list(search_terms)}")
+    logger.info(f" ENHANCED RXNORM LOOKUP: Original='{drug_name}', Strength='{search_strength or 'N/A'}', Search Terms={list(search_terms)}")
 
     # Prepare context for the search
     search_context = context or {}
@@ -90,15 +124,33 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
             )
 
         # 3. Search for drug_name and other_drug_names
-        drug_names_to_search = {drug_name}
+        drug_names_to_search = set()
+        # Add main drug name
+        if drug_name:
+            main_drug = _get_field_value(drug_name)
+            if main_drug:
+                drug_names_to_search.add(main_drug)
+        
         if medication_details:
-            if medication_details.get("drug_name"):
-                drug_names_to_search.add(medication_details.get("drug_name"))
+            # Add drug name from medication details
+            detail_drug = _get_field_value(medication_details.get("drug_name"))
+            if detail_drug:
+                drug_names_to_search.add(detail_drug)
+            
+            # Add other drug names
             other_names = medication_details.get("other_drug_names", [])
             if isinstance(other_names, list):
-                drug_names_to_search.update(other_names)
+                for name in other_names:
+                    cleaned_name = _get_field_value(name)
+                    if cleaned_name:
+                        drug_names_to_search.add(cleaned_name)
+            elif other_names:  # Handle case where other_names is a single value
+                cleaned_other = _get_field_value(other_names)
+                if cleaned_other:
+                    drug_names_to_search.add(cleaned_other)
         
-        drug_names_to_search = {term.strip() for term in drug_names_to_search if term and term.strip()}
+        # Final cleanup - ensure all terms are valid strings
+        drug_names_to_search = {term.strip() for term in drug_names_to_search if isinstance(term, str) and term.strip()}
         for term in drug_names_to_search:
             if term:
                 search_tasks.append(
@@ -125,7 +177,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
         
         if comprehensive_results:
             comprehensive_results.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
-            logger.info(f"📋 RxNorm found {len(comprehensive_results)} unique drug variants from {len(search_terms)} search terms.")
+            logger.info(f" RxNorm found {len(comprehensive_results)} unique drug variants from {len(search_terms)} search terms.")
 
             # Use safety-aware selection if safety assessment is available and multiple options exist
             if safety_assessment and len(comprehensive_results) > 1:
@@ -140,7 +192,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         drug_name_str = result.get('drug_name', '').lower()
                         if strength.lower() in drug_name_str:
                             best_match = result
-                            logger.info(f"✅ Found strength-specific match: {result.get('drug_name')}")
+                            logger.info(f" Found strength-specific match: {result.get('drug_name')}")
                             break
 
             # Return ONLY RxNorm data with RxNav verification
@@ -153,7 +205,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
 
                 if verification_result.get("verified"):
                     verified_name = drug_name_found  # Use KG name directly
-                    logger.info(f"✅ KG VERIFIED: RXCUI={rxcui}, Name='{verified_name}'")
+                    logger.info(f" KG VERIFIED: RXCUI={rxcui}, Name='{verified_name}'")
 
                     return {
                         "rxcui": str(rxcui),
@@ -171,10 +223,10 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         "all_candidates": comprehensive_results[:10]  # Include top 5 candidates for transparency
                     }
                 else:
-                    logger.warning(f"⚠️ RxNav verification failed for RxCUI {rxcui}: {verification_result.get('reason')}")
+                    logger.warning(f" RxNav verification failed for RxCUI {rxcui}: {verification_result.get('reason')}")
                     # Provide RxNorm data as context even if RxNav verification fails
                     # This allows the model to make informed decisions rather than returning null
-                    logger.info(f"📋 Providing RxNorm context for model evaluation: '{drug_name_found}'")
+                    logger.info(f" Providing RxNorm context for model evaluation: '{drug_name_found}'")
 
                     return {
                         "rxcui": str(rxcui),
@@ -197,9 +249,9 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
                         "all_candidates": comprehensive_results[:10]  # Include top 5 candidates for transparency
                     }
             else:
-                logger.warning(f"⚠️ RXNORM: Found results but missing critical data for '{drug_name}'")
+                logger.warning(f" RXNORM: Found results but missing critical data for '{drug_name}'")
         else:
-            logger.warning(f"❌ RXNORM: No matches found for '{drug_name}' in knowledge graph")
+            logger.warning(f" RXNORM: No matches found for '{drug_name}' in knowledge graph")
 
         # Return intelligent fallback with extracted information
         fallback_info = f"Drug '{drug_name}'"
@@ -207,7 +259,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
             fallback_info += f" {strength}"
         fallback_info += " was prescribed but could not be found in the RxNorm knowledge graph."
 
-        logger.info(f"📝 RXNORM: Returning structured fallback for '{drug_name}'")
+        logger.info(f" RXNORM: Returning structured fallback for '{drug_name}'")
         return {
             "rxcui": None,
             "generic_name": None,
@@ -227,7 +279,7 @@ async def get_rxnorm_drug_info(drug_name: str, strength: str = None, instruction
         }
 
     except Exception as e:
-        logger.error(f"💥 RXNORM ERROR for '{drug_name}': {str(e)}")
+        logger.error(f" RXNORM ERROR for '{drug_name}': {str(e)}")
 
         # Return null structure on error - NO HALLUCINATION
         return {
@@ -277,7 +329,7 @@ async def _select_best_match_with_safety(rxnorm_results: List[Dict[str, Any]], s
             # Find the selected drug in results
             for result in rxnorm_results:
                 if str(result.get('rxcui', '')) == str(selected_rxcui):
-                    logger.info(f"🛡️ Safety-aware selection: {result.get('drug_name')} (RXCUI: {selected_rxcui})")
+                    logger.info(f" Safety-aware selection: {result.get('drug_name')} (RXCUI: {selected_rxcui})")
                     logger.info(f"   Reason: {selection_data.get('selection_reason', 'N/A')}")
                     return result
 
@@ -291,10 +343,6 @@ async def _select_best_match_with_safety(rxnorm_results: List[Dict[str, Any]], s
     logger.info("Falling back to top-ranked result")
     return rxnorm_results[0]
 
-
-# calculate_quantity_from_sig, infer_days_from_quantity, and generate_sig_english now imported from common_tools
-
-
 async def process_medication_parallel(medications: List[Dict[str, Any]], state: Dict[str, Any] = None) -> List[Dict[str, Any]]:
     """Process multiple medications in parallel"""
     try:
@@ -302,16 +350,16 @@ async def process_medication_parallel(medications: List[Dict[str, Any]], state: 
         
         async def process_single_med(medication):
             try:
-                drug_name = medication.get('drug_name', 'unknown')
-                logger.info(f"Processing: {drug_name}")
+                drug_name_val = _get_field_value(medication.get('drug_name', 'unknown'))
+                logger.info(f"Processing: {drug_name_val}")
                 
                 safety_assessment = state.get("safety_assessment") if state else None
                 
                 # Get RxNorm information
                 rxnorm_data = await get_rxnorm_drug_info(
-                    drug_name=drug_name,
-                    strength=medication.get("strength"),
-                    instructions=medication.get("instructions_for_use"),
+                    drug_name=drug_name_val,
+                    strength=_get_field_value(medication.get("strength")),
+                    instructions=_get_field_value(medication.get("instructions_for_use")),
                     safety_assessment=safety_assessment,
                     medication_details=medication
                 )
@@ -337,7 +385,7 @@ async def process_medication_parallel(medications: List[Dict[str, Any]], state: 
                 return enhanced_med
                 
             except Exception as e:
-                logger.error(f"Failed to process {medication.get('drug_name', 'unknown')}: {e}")
+                logger.error(f"Failed to process {medication}: {e}")
                 return medication  # Return original on failure
         
         # Create coroutine tasks for all medications
@@ -346,7 +394,7 @@ async def process_medication_parallel(medications: List[Dict[str, Any]], state: 
         # Process in parallel with max 5 concurrent - tasks are already coroutines
         processed_medications = await asyncio.gather(*tasks[:5] if len(tasks) > 5 else tasks)
         
-        logger.info(f"✅ Completed parallel processing of {len(processed_medications)} medications")
+        logger.info(f" Completed parallel processing of {len(processed_medications)} medications")
         return processed_medications
         
     except Exception as e:

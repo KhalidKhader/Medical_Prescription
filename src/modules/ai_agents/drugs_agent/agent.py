@@ -32,9 +32,13 @@ class DrugsAgent(BaseAgent):
             final_medications = []
             for med_data in processed_medications_with_candidates:
                 if med_data.get("all_candidates"):
-                    self.scratchpad.add_action(f"Running smart selection for {med_data.get('drug_name')}")
+                    drug_name_field = med_data.get('drug_name')
+                    drug_name_str = drug_name_field.get('value') if isinstance(drug_name_field, dict) else drug_name_field
+                    
+                    self.scratchpad.add_action(f"Running smart selection for {drug_name_str}")
+
                     selector_state = await self.drug_selector.process({
-                        "drug_name": med_data.get("drug_name"),
+                        "drug_name": drug_name_str,
                         "candidates": med_data.get("all_candidates"),
                         "original_medication": med_data
                     })

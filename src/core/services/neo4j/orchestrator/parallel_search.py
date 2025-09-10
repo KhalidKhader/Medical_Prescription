@@ -28,7 +28,7 @@ async def parallel_search(
     Returns:
         Dictionary with results from each search method
     """
-    logger.info(f"🚀 Starting comprehensive parallel search for '{drug_name}'")
+    logger.info(f" Starting comprehensive parallel search for '{drug_name}'")
     
     try:
         # Create all search tasks to run in parallel
@@ -119,7 +119,7 @@ async def parallel_search(
                 )
         
         # Execute all searches in parallel
-        logger.info(f"⚡ Executing {len(search_tasks)} search methods in parallel")
+        logger.info(f" Executing {len(search_tasks)} search methods in parallel")
         search_results = await asyncio.gather(*search_tasks, return_exceptions=True)
         
         # Process results
@@ -131,11 +131,11 @@ async def parallel_search(
             
             method_name, method_results = result
             consolidated_results[method_name] = method_results
-            logger.info(f"✅ {method_name}: {len(method_results)} results")
+            logger.info(f" {method_name}: {len(method_results)} results")
         
         # Log summary
         total_results = sum(len(results) for results in consolidated_results.values())
-        logger.info(f"🎯 Parallel search completed: {total_results} total results from {len(consolidated_results)} methods")
+        logger.info(f" Parallel search completed: {total_results} total results from {len(consolidated_results)} methods")
         
         return consolidated_results
         

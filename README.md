@@ -86,25 +86,35 @@ Create a `.env` file based on `.env.example`:
 cp .env.example .env
 ```
 
-Configure the following environment variables:
+Configure the following environment variables in your `.env` file:
 
 ```bash
-# Google Gemini Configuration
-GOOGLE_API_KEY=your_google_api_key
-GEMINI_MODEL_PRIMARY=gemini-2.5-pro-latest
-GEMINI_MODEL_SECONDARY=gemini-2.5-pro-latest
-GEMINI_MODEL_FALLBACK=gemini-2.5-pro-latest
+# Required API Keys and Credentials
+GOOGLE_API_KEY=           # Your Google Gemini API key from https://makersuite.google.com/app/apikey
+LANGFUSE_SECRET_KEY=      # Format: sk-lf-xxxxxxxx from https://cloud.langfuse.com
+LANGFUSE_PUBLIC_KEY=      # Format: pk-lf-xxxxxxxx from https://cloud.langfuse.com
 
-# Neo4j Configuration (RxNorm KG)
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=your_neo4j_password
-NEO4J_DATABASE=neo4j
+# Neo4j Database Configuration
+NEO4J_URI=bolt://localhost:7687   # Your Neo4j database URI
+NEO4J_USER=neo4j                  # Database username (default: neo4j)
+NEO4J_PASSWORD=your-secure-pass   # Strong password for Neo4j
 
-# LangFuse Configuration (Observability)
-LANGFUSE_SECRET_KEY=your_langfuse_secret_key
-LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
-LANGFUSE_HOST=https://us.cloud.langfuse.com
+# Optional: AI Model Configuration
+GEMINI_MODEL_PRIMARY=gemini-2.5-pro-latest      # Primary model
+GEMINI_MODEL_SECONDARY=gemini-1.5-pro-latest    # Fallback model 1
+GEMINI_MODEL_FALLBACK=gemini-1.5-flash-latest   # Fallback model 2
+
+# Optional: Google Cloud Configuration
+GOOGLE_CLOUD_PROJECT=your-project-id    # Only if using VertexAI
+VERTIX_AI_PROJECT_ID=your-project-id    # Only if using VertexAI
+GOOGLE_GENAI_USE_VERTEXAI=false        # Set to true if using VertexAI
+```
+
+⚠️ **Security Note**: 
+- Never commit `.env` file to version control
+- Use strong, unique passwords for all credentials
+- Rotate API keys regularly
+- Use environment-specific files (`.env.development`, `.env.production`)
 
 # Application Settings
 APP_NAME=Escribe Triage
@@ -185,23 +195,93 @@ escribe-triage/
 ### Available Commands
 
 ```bash
-# Install dependencies
-make install
+# Development Environment Setup
+poetry install                     # Install all dependencies
+poetry shell                      # Activate virtual environment
+poetry update                     # Update dependencies to latest versions
+poetry add package_name           # Add new dependency
+poetry add -D package_name        # Add development dependency
 
-# Run development server
-make dev
+# Running the Application
+poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000  # Development server with hot reload
+poetry run python src/main.py                                         # Run without reload
+poetry run uvicorn src.main:app --host 0.0.0.0 --port 8000           # Production server
 
-# Run tests
-make test
+# Database Management
+poetry run python scripts/setup_neo4j.py   # Initialize Neo4j database
+poetry run python scripts/load_rxnorm.py   # Load RxNorm data into Neo4j
 
-# Code formatting
-make format
+# Testing and Quality
+poetry run pytest                          # Run all tests
+poetry run pytest -v                       # Verbose test output
+poetry run pytest --cov=src               # Test coverage
+poetry run black src/                     # Format code
+poetry run flake8 src/                    # Lint code
+poetry run mypy src/                      # Type checking
+poetry run safety check                   # Security check
 
-# Linting
-make lint
+# Cleaning and Maintenance
+poetry run python scripts/clean.py        # Clean temporary files
+poetry cache clear --all .                # Clear Poetry cache
+poetry env remove --all                   # Remove all virtual environments
 
-# Clean temporary files
-make clean
+# Docker Operations
+docker-compose up -d                      # Start all services
+docker-compose down                       # Stop all services
+docker-compose logs -f                    # View logs
+
+# Health Checks
+poetry run python scripts/health_check.py # Run system health check
+poetry run python scripts/verify_env.py   # Verify environment setup
+```
+
+### Running in Different Environments
+
+#### Development
+```bash
+# Start with hot reload and debug logging
+poetry run uvicorn src.main:app \
+    --reload \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --log-level debug \
+    --env-file .env.development
+```
+
+#### Production
+```bash
+# Start with optimized settings
+poetry run uvicorn src.main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --workers 4 \
+    --log-level info \
+    --env-file .env.production \
+    --proxy-headers \
+    --forwarded-allow-ips '*'
+```
+
+#### Testing
+```bash
+# Run with test configuration
+poetry run uvicorn src.main:app \
+    --port 8001 \
+    --env-file .env.test
+```
+
+### Environment Management
+```bash
+# Create new environment
+poetry env use python3.11
+
+# Show current environment info
+poetry env info
+
+# List all environments
+poetry env list
+
+# Export dependencies
+poetry export -f requirements.txt --output requirements.txt
 ```
 
 ### Adding New AI Agents
@@ -225,7 +305,7 @@ poetry run pytest tests/unit/ -v
 poetry run pytest tests/integration/ -v
 ```
 
-## 📊 Monitoring & Observability
+##  Monitoring & Observability
 
 ### Health Checks
 

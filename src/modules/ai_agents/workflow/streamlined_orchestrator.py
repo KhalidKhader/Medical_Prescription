@@ -14,13 +14,9 @@ from src.core.settings.threading import (
     CircuitBreaker
 )
 from src.modules.ai_agents.image_extractor_agent.agent import ImageExtractorAgent
-from src.modules.ai_agents.patient_info_agent.agent import PatientInfoAgent
-from src.modules.ai_agents.prescriber_agent.agent import PrescriberAgent
+from src.modules.ai_agents.patient_prescriber_info_agent.agent import PatientPrescriberInfoAgent
 from src.modules.ai_agents.drugs_agent.agent import DrugsAgent
-# from src.modules.ai_agents.drugs_validation_agent.agent import DrugsValidationAgent
 from src.modules.ai_agents.clinical_safety_agent.agent import ClinicalSafetyAgent
-# from src.modules.ai_agents.instructions_of_use_agent.agent import InstructionsOfUseAgent
-# from src.modules.ai_agents.drug_selector_agent.agent import SmartDrugSelectorAgent
 from langgraph.checkpoint.memory import MemorySaver
 from src.modules.ai_agents.workflow.WorkflowState import WorkflowState
 
@@ -37,8 +33,7 @@ class PrescriptionOrchestrator:
             
             # Core extraction and processing agents
             self.image_extractor = ImageExtractorAgent()
-            self.patient_agent = PatientInfoAgent()
-            self.prescriber_agent = PrescriberAgent()
+            self.patient_prescriber_agent = PatientPrescriberInfoAgent()
             self.drugs_agent = DrugsAgent()
             
             # Drug processing and validation agents
@@ -65,12 +60,12 @@ class PrescriptionOrchestrator:
                         host=settings.langfuse_host,
                         timeout=settings.langfuse_timeout
                     )
-                    logger.info("✅ LangFuse initialized successfully")
+                    logger.info(" LangFuse initialized successfully")
                 except Exception as e:
-                    logger.error(f"❌ LangFuse initialization failed: {e}")
+                    logger.error(f" LangFuse initialization failed: {e}")
                     self.langfuse = None
             else:
-                logger.info("ℹ️ LangFuse disabled")
+                logger.info(" LangFuse disabled")
                 self.langfuse = None
 
             # Apply custom configuration if provided
@@ -78,7 +73,7 @@ class PrescriptionOrchestrator:
                 logger.info(f"Applying custom workflow configuration: {config}")
                 self._apply_configuration(config)
             
-            logger.info("✅ Prescription workflow orchestrator initialized successfully")
+            logger.info(" Prescription workflow orchestrator initialized successfully")
             
         except Exception as e:
             logger.error(f"Failed to initialize prescription workflow: {e}")
@@ -98,7 +93,7 @@ class PrescriptionOrchestrator:
     @observe(name="prescription_processing_workflow", as_type="generation", capture_input=True, capture_output=True)
     async def process_prescription(self, initial_state: Dict[str, Any]) -> Dict[str, Any]:
         """Process prescription through complete workflow"""
-        logger.info("🚀 Starting prescription processing workflow")
+        logger.info(" Starting prescription processing workflow")
         
         state = WorkflowState(**initial_state)
         state.setdefault("quality_warnings", [])
@@ -116,7 +111,7 @@ class PrescriptionOrchestrator:
             )
 
             # Step 1: Image Extraction
-            logger.info("📷 Step 1: Image Extraction")
+            logger.info(" Step 1: Image Extraction")
             state = await self.circuit_breaker.call(self.image_extractor.process, state)
 
             self.langfuse.create_event(
@@ -137,7 +132,7 @@ class PrescriptionOrchestrator:
                 return self._create_final_output(state, "Image extraction failed")
 
             # Step 2: Parallel Processing
-            logger.info("⚡ Step 2: Parallel Agent Processing")
+            logger.info(" Step 2: Parallel Agent Processing")
             await self._process_sections_parallel(state)
 
             self.langfuse.create_event(
@@ -150,11 +145,11 @@ class PrescriptionOrchestrator:
             )
 
             # Step 3: Quality & Safety
-            logger.info("🔍 Step 3: Quality & Safety Processing")
+            logger.info(" Step 3: Quality & Safety Processing")
             await self._process_quality_safety_sequential(state)
             
             # Step 4: Final Assembly
-            logger.info("📋 Step 4: Final Assembly")
+            logger.info(" Step 4: Final Assembly")
             final_state = self._create_final_output(state, "completed")
 
             self.langfuse.create_event(
@@ -169,7 +164,7 @@ class PrescriptionOrchestrator:
             # Log performance metrics
             self._log_performance_metrics()
 
-            logger.info("✅ Prescription processing completed successfully")
+            logger.info(" Prescription processing completed successfully")
 
             # Log final completion event
             stats = self.performance_monitor.get_stats()
@@ -207,17 +202,10 @@ class PrescriptionOrchestrator:
         """Process patient, prescriber, and medications in parallel"""
         parallel_tasks = []
         
-        # Patient processing
-        if state.get("patient_data"):
-            async def patient_processing():
-                return await self.patient_agent.process(state.copy())
-            parallel_tasks.append(patient_processing)
-        
-        # Prescriber processing
-        if state.get("prescriber_data"):
-            async def prescriber_processing():
-                return await self.prescriber_agent.process(state.copy())
-            parallel_tasks.append(prescriber_processing)
+        # Combined patient and prescriber processing
+        async def patient_prescriber_processing():
+            return await self.patient_prescriber_agent.process(state.copy())
+        parallel_tasks.append(patient_prescriber_processing)
         
         # Medications processing
         if state.get("medications_to_process"):
@@ -253,12 +241,12 @@ class PrescriptionOrchestrator:
                 if result:
                     state.update(result)
 
-        logger.info(f"✅ Parallel processing completed - {len(parallel_tasks)} sections processed")
+        logger.info(f" Parallel processing completed - {len(parallel_tasks)} sections processed")
     
     async def _process_quality_safety_sequential(self, state: Dict[str, Any]):
         """Process essential quality and safety checks"""
         try:
-            logger.info("🛡️ Clinical Safety Check")
+            logger.info(" Clinical Safety Check")
             safety_task = asyncio.create_task(
                 self.clinical_safety_agent.review_prescription_safety(
                     state.get("prescription_data", {})
@@ -279,9 +267,9 @@ class PrescriptionOrchestrator:
                     }
                 )
 
-                logger.info("✅ Safety check completed")
+                logger.info(" Safety check completed")
             except asyncio.TimeoutError:
-                logger.warning("⚠️ Safety check timed out - skipping")
+                logger.warning(" Safety check timed out - skipping")
                 state["safety_assessment"] = {"status": "skipped_for_performance"}
                 safety_task.cancel()
 
@@ -312,7 +300,7 @@ class PrescriptionOrchestrator:
     def _log_performance_metrics(self):
         """Log current performance metrics"""
         stats = self.performance_monitor.get_stats()
-        logger.info(f"📊 Performance Metrics: {stats}")
+        logger.info(f" Performance Metrics: {stats}")
     
     def _create_final_output(self, state: Dict[str, Any], status: str) -> Dict[str, Any]:
         """Create final output with complete prescription data"""

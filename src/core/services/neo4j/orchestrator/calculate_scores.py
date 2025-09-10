@@ -101,7 +101,7 @@ def calculate_scores(
         # Sort by comprehensive score
         results.sort(key=lambda x: x.get("comprehensive_score", 0), reverse=True)
         
-        logger.info(f"📊 Comprehensive scoring complete for {len(results)} results")
+        logger.info(f" Comprehensive scoring complete for {len(results)} results")
         return results
         
     except Exception as e:
